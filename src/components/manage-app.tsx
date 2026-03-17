@@ -106,11 +106,11 @@ export function ManageApp() {
     () => seatPlans.find((item) => item.id === selectedSeatPlanId) ?? null,
     [seatPlans, selectedSeatPlanId],
   );
-  const selectedSwapStudents = useMemo(
+  const selectedSwapSeats = useMemo(
     () =>
       selectedSwapSeatIds
         .map((seatId) => selectedSeatPlan?.seats.find((seat) => seat.seatId === seatId) ?? null)
-        .filter((seat): seat is NonNullable<typeof seat> => Boolean(seat?.studentId)),
+        .filter((seat): seat is NonNullable<typeof seat> => Boolean(seat)),
     [selectedSeatPlan, selectedSwapSeatIds],
   );
   const currentLayout =
@@ -651,12 +651,6 @@ export function ManageApp() {
       return;
     }
 
-    const targetSeat = selectedSeatPlan.seats.find((seat) => seat.seatId === seatId);
-
-    if (!targetSeat?.studentId) {
-      return;
-    }
-
     setSelectedSwapSeatIds((current) => {
       if (current.includes(seatId)) {
         return current.filter((item) => item !== seatId);
@@ -682,7 +676,7 @@ export function ManageApp() {
     const firstSeat = selectedSeatPlan.seats.find((seat) => seat.seatId === firstSeatId);
     const secondSeat = selectedSeatPlan.seats.find((seat) => seat.seatId === secondSeatId);
 
-    if (!firstSeat?.studentId || !secondSeat?.studentId) {
+    if (!firstSeat || !secondSeat) {
       setErrorMessage(t("swapSelectionError"));
       return;
     }
@@ -1077,12 +1071,12 @@ export function ManageApp() {
                     {selectedSeatPlan ? (
                       <div className={styles.selectionStrip}>
                         <p className={styles.helper}>{t("swapHint")}</p>
-                        {selectedSwapStudents.length > 0 ? (
+                        {selectedSwapSeats.length > 0 ? (
                           <div className={styles.selectionChips}>
                             <span className={styles.pill}>{t("selectedStudents")}</span>
-                            {selectedSwapStudents.map((seat) => (
+                            {selectedSwapSeats.map((seat) => (
                               <span className={styles.pill} key={seat.seatId}>
-                                {seat.studentName}
+                                {seat.studentName ?? `${t("emptySeat")} ${seat.row}-${seat.pair} ${seat.side === "left" ? "L" : "R"}`}
                               </span>
                             ))}
                           </div>

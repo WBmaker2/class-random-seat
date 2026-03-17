@@ -72,7 +72,7 @@ export function SeatGrid({
                     <div className={styles.pair} key={`${row}-${pair}`}>
                       {pairSeats.map((position) => {
                         const assigned = seats?.find((seat) => seat.seatId === position.seatId);
-                        const isClickable = Boolean(onSeatClick && assigned?.studentId);
+                        const isClickable = Boolean(onSeatClick);
                         const isSelected = selectedSeatIds?.includes(position.seatId) ?? false;
 
                         const seatClassName = clsx(
