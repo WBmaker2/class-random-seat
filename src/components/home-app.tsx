@@ -65,6 +65,7 @@ export function HomeApp() {
   const { t } = useI18n();
   const audioContextRef = useRef<AudioContext | null>(null);
   const timerCompleteRef = useRef<() => void>(() => undefined);
+  const pickerCelebrationTimeoutRef = useRef<number | null>(null);
   const [didLoadLocalData, setDidLoadLocalData] = useState(false);
   const [localDataReady, setLocalDataReady] = useState(false);
   const [appData, setAppData] = useState<LocalAppData>(() => getEmptyAppData(language));
@@ -73,6 +74,11 @@ export function HomeApp() {
   const [pickerGender, setPickerGender] = useState<PickerGenderFilter>("all");
   const [pickerCount, setPickerCount] = useState<PickerDrawCount>(1);
   const [pickerResult, setPickerResult] = useState<StudentRecord[]>([]);
+  const [pickerRemainingIdsByScope, setPickerRemainingIdsByScope] = useState<
+    Record<string, string[]>
+  >({});
+  const [pickerCelebrationOpen, setPickerCelebrationOpen] = useState(false);
+  const [pickerAnimationKey, setPickerAnimationKey] = useState(0);
   const [timerMinutes, setTimerMinutes] = useState(5);
   const [remainingSeconds, setRemainingSeconds] = useState(300);
   const [timerRunning, setTimerRunning] = useState(false);
@@ -89,6 +95,13 @@ export function HomeApp() {
     () => (selectedClassId ? appData.studentsByClass[selectedClassId] ?? [] : []),
     [appData.studentsByClass, selectedClassId],
   );
+  const pickerCandidates = useMemo(
+    () =>
+      pickerGender === "all"
+        ? students
+        : students.filter((student) => student.gender === pickerGender),
+    [pickerGender, students],
+  );
   const seatPlans = useMemo(
     () => (selectedClassId ? appData.seatPlansByClass[selectedClassId] ?? [] : []),
     [appData.seatPlansByClass, selectedClassId],
@@ -103,6 +116,7 @@ export function HomeApp() {
       rows: 4,
       pairsPerRow: 3,
     };
+  const pickerScopeKey = `${selectedClassId || "none"}:${pickerGender}`;
 
   const ensureAudioReady = async () => {
     if (!audioContextRef.current) {
@@ -153,6 +167,46 @@ export function HomeApp() {
       shimmer.start(noteStart);
       tone.stop(fadeTime);
       shimmer.stop(fadeTime);
+    });
+  };
+
+  const playPickerCelebrationSound = async () => {
+    const audioContext = await ensureAudioReady();
+
+    if (!audioContext) {
+      return;
+    }
+
+    const notes = [659.25, 783.99, 987.77, 1318.51];
+    const baseTime = audioContext.currentTime + 0.03;
+
+    notes.forEach((frequency, index) => {
+      const noteStart = baseTime + index * 0.08;
+      const noteEnd = noteStart + 0.42;
+      const gain = audioContext.createGain();
+      const lead = audioContext.createOscillator();
+      const sparkle = audioContext.createOscillator();
+
+      lead.type = "triangle";
+      lead.frequency.setValueAtTime(frequency, noteStart);
+      lead.frequency.exponentialRampToValueAtTime(frequency * 1.04, noteEnd);
+
+      sparkle.type = "sine";
+      sparkle.frequency.setValueAtTime(frequency * 2, noteStart);
+
+      gain.gain.setValueAtTime(0.0001, noteStart);
+      gain.gain.exponentialRampToValueAtTime(0.13, noteStart + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.04, noteStart + 0.16);
+      gain.gain.exponentialRampToValueAtTime(0.0001, noteEnd);
+
+      lead.connect(gain);
+      sparkle.connect(gain);
+      gain.connect(audioContext.destination);
+
+      lead.start(noteStart);
+      sparkle.start(noteStart);
+      lead.stop(noteEnd);
+      sparkle.stop(noteEnd);
     });
   };
   timerCompleteRef.current = () => {
@@ -231,11 +285,20 @@ export function HomeApp() {
 
   useEffect(() => {
     return () => {
+      if (pickerCelebrationTimeoutRef.current) {
+        window.clearTimeout(pickerCelebrationTimeoutRef.current);
+      }
+
       if (audioContextRef.current) {
         void audioContextRef.current.close().catch(() => undefined);
       }
     };
   }, []);
+
+  useEffect(() => {
+    setPickerResult([]);
+    setPickerCelebrationOpen(false);
+  }, [pickerGender, selectedClassId]);
 
   const clearMessages = () => {
     setStatusMessage("");
@@ -284,10 +347,28 @@ export function HomeApp() {
     }));
   };
 
-  const handleDrawStudents = () => {
+  const handleDrawStudents = async () => {
     clearMessages();
 
-    const drawn = drawRandomStudents(students, pickerGender, pickerCount);
+    if (pickerCandidates.length === 0) {
+      setPickerResult([]);
+      setErrorMessage(t("noMatchingStudents"));
+      return;
+    }
+
+    const candidateMap = new Map(pickerCandidates.map((student) => [student.id, student]));
+    const currentRemainingIds = (pickerRemainingIdsByScope[pickerScopeKey] ?? []).filter((id) =>
+      candidateMap.has(id),
+    );
+    const activePoolIds =
+      currentRemainingIds.length > 0 ? currentRemainingIds : pickerCandidates.map((student) => student.id);
+    const activePool = activePoolIds
+      .map((id) => candidateMap.get(id))
+      .filter((student): student is StudentRecord => Boolean(student));
+    const drawCount = Math.min(activePool.length, pickerCount) as PickerDrawCount;
+    const drawn = drawRandomStudents(activePool, "all", drawCount);
+    const drawnIds = new Set(drawn.map((student) => student.id));
+    const nextRemainingIds = activePoolIds.filter((id) => !drawnIds.has(id));
 
     if (drawn.length === 0) {
       setPickerResult([]);
@@ -295,13 +376,26 @@ export function HomeApp() {
       return;
     }
 
-    if (drawn.length < pickerCount) {
-      setPickerResult(drawn);
-      setErrorMessage(t("notEnoughStudents"));
-      return;
+    setPickerResult(drawn);
+    setPickerRemainingIdsByScope((current) => ({
+      ...current,
+      [pickerScopeKey]: nextRemainingIds,
+    }));
+    setPickerAnimationKey((current) => current + 1);
+    setPickerCelebrationOpen(true);
+    await playPickerCelebrationSound();
+
+    if (pickerCelebrationTimeoutRef.current) {
+      window.clearTimeout(pickerCelebrationTimeoutRef.current);
     }
 
-    setPickerResult(drawn);
+    pickerCelebrationTimeoutRef.current = window.setTimeout(() => {
+      setPickerCelebrationOpen(false);
+    }, 2200);
+
+    if (nextRemainingIds.length === 0) {
+      setStatusMessage(t("pickerCycleComplete"));
+    }
   };
 
   const applyTimerMinutes = (nextMinutes: number) => {
@@ -502,12 +596,18 @@ export function HomeApp() {
             {pickerResult.length === 0 ? (
               <div className={styles.emptyState}>{t("noPickerResult")}</div>
             ) : (
-              <div className={styles.pickerResults}>
+              <div className={styles.pickerResults} key={pickerAnimationKey} role="status">
                 {pickerResult.map((student) => (
-                  <div className={styles.pickerResultItem} key={student.id}>
-                    <div className={styles.itemHead}>
-                      <span className={styles.itemTitle}>{student.name}</span>
-                      <span className={styles.studentMeta}>
+                  <div
+                    className={clsx(
+                      styles.pickerResultItem,
+                      pickerResult.length === 1 && styles.pickerResultItemPrimary,
+                    )}
+                    key={student.id}
+                  >
+                    <div className={styles.pickerResultBody}>
+                      <span className={styles.pickerResultName}>{student.name}</span>
+                      <span className={styles.pickerResultGender}>
                         {student.gender === "male" ? t("male") : t("female")}
                       </span>
                     </div>
@@ -584,6 +684,29 @@ export function HomeApp() {
           </div>
         </section>
       </div>
+
+      {pickerCelebrationOpen && pickerResult.length > 0 ? (
+        <div className={styles.pickerCelebrationBackdrop}>
+          <div className={styles.pickerCelebrationModal} key={pickerAnimationKey}>
+            <span className={styles.eyebrow}>{t("drawSummary")}</span>
+            <div
+              className={clsx(
+                styles.pickerCelebrationNames,
+                pickerResult.length === 1 && styles.pickerCelebrationNamesSingle,
+              )}
+            >
+              {pickerResult.map((student) => (
+                <div className={styles.pickerCelebrationCard} key={student.id}>
+                  <span className={styles.pickerCelebrationName}>{student.name}</span>
+                  <span className={styles.pickerCelebrationMeta}>
+                    {student.gender === "male" ? t("male") : t("female")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

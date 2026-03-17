@@ -63,6 +63,7 @@ const dictionaries: Record<Language, Record<string, string>> = {
     pickerResult: "이번에 뽑힌 학생",
     noPickerResult: "아직 학생을 뽑지 않았습니다.",
     notEnoughStudents: "조건에 맞는 학생 수가 부족합니다.",
+    pickerCycleComplete: "선택한 조건의 학생이 모두 한 번씩 뽑혔습니다. 다시 학생을 뽑을 수 있습니다.",
     seatCapacityError: "현재 배치도의 좌석 수보다 학생 수가 많습니다. 배치도를 늘리거나 학생 수를 조정해 주세요.",
     lastViewed: "마지막으로 본 자리표를 자동으로 불러옵니다.",
     layoutSettings: "배치도 설정",
@@ -188,6 +189,8 @@ const dictionaries: Record<Language, Record<string, string>> = {
     pickerResult: "Selected students",
     noPickerResult: "No students drawn yet.",
     notEnoughStudents: "Not enough students match this filter.",
+    pickerCycleComplete:
+      "Every matching student has been drawn once. You can start drawing again.",
     seatCapacityError: "There are more students than seats in this layout. Increase the layout or reduce the student list.",
     lastViewed: "The last opened seat plan is restored automatically.",
     layoutSettings: "Layout settings",
