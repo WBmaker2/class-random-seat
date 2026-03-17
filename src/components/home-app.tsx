@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import styles from "@/components/dashboard-app.module.css";
 import { LanguageSwitch, SeatGrid } from "@/components/shared-app-ui";
@@ -43,9 +43,27 @@ function getEmptyAppData(language: Language): LocalAppData {
   };
 }
 
+function getAudioContext() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const AudioContextClass =
+    window.AudioContext ??
+    (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
+  if (!AudioContextClass) {
+    return null;
+  }
+
+  return new AudioContextClass();
+}
+
 export function HomeApp() {
   const { language, setLanguage } = useLanguage();
   const { t } = useI18n();
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const timerCompleteRef = useRef<() => void>(() => undefined);
   const [didLoadLocalData, setDidLoadLocalData] = useState(false);
   const [localDataReady, setLocalDataReady] = useState(false);
   const [appData, setAppData] = useState<LocalAppData>(() => getEmptyAppData(language));
@@ -84,6 +102,61 @@ export function HomeApp() {
       rows: 4,
       pairsPerRow: 3,
     };
+
+  const ensureAudioReady = async () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = getAudioContext();
+    }
+
+    if (audioContextRef.current?.state === "suspended") {
+      await audioContextRef.current.resume().catch(() => undefined);
+    }
+
+    return audioContextRef.current;
+  };
+
+  const playTimerCompleteSound = async () => {
+    const audioContext = await ensureAudioReady();
+
+    if (!audioContext) {
+      return;
+    }
+
+    const notes = [783.99, 987.77, 1174.66, 1567.98];
+    const baseTime = audioContext.currentTime + 0.05;
+
+    notes.forEach((frequency, index) => {
+      const noteStart = baseTime + index * 0.22;
+      const noteDuration = 1.4;
+      const fadeTime = noteStart + noteDuration;
+      const gain = audioContext.createGain();
+      const tone = audioContext.createOscillator();
+      const shimmer = audioContext.createOscillator();
+
+      tone.type = "triangle";
+      tone.frequency.setValueAtTime(frequency, noteStart);
+
+      shimmer.type = "sine";
+      shimmer.frequency.setValueAtTime(frequency * 2, noteStart);
+
+      gain.gain.setValueAtTime(0.0001, noteStart);
+      gain.gain.exponentialRampToValueAtTime(0.16, noteStart + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.045, noteStart + 0.28);
+      gain.gain.exponentialRampToValueAtTime(0.0001, fadeTime);
+
+      tone.connect(gain);
+      shimmer.connect(gain);
+      gain.connect(audioContext.destination);
+
+      tone.start(noteStart);
+      shimmer.start(noteStart);
+      tone.stop(fadeTime);
+      shimmer.stop(fadeTime);
+    });
+  };
+  timerCompleteRef.current = () => {
+    void playTimerCompleteSound();
+  };
 
   useEffect(() => {
     if (didLoadLocalData) {
@@ -142,6 +215,7 @@ export function HomeApp() {
           window.clearInterval(interval);
           setTimerRunning(false);
           setTimerDone(true);
+          timerCompleteRef.current();
           return 0;
         }
 
@@ -153,6 +227,14 @@ export function HomeApp() {
       window.clearInterval(interval);
     };
   }, [timerRunning]);
+
+  useEffect(() => {
+    return () => {
+      if (audioContextRef.current) {
+        void audioContextRef.current.close().catch(() => undefined);
+      }
+    };
+  }, []);
 
   const clearMessages = () => {
     setStatusMessage("");
@@ -388,7 +470,7 @@ export function HomeApp() {
             <div className={styles.field}>
               <span className={styles.label}>{t("pickerCount")}</span>
               <div className={styles.toggleGroup}>
-                {[1, 2, 3].map((count) => (
+                {[1, 2, 3, 4, 5].map((count) => (
                   <button
                     key={count}
                     className={clsx(
@@ -445,7 +527,7 @@ export function HomeApp() {
               {formatTimer(remainingSeconds)}
             </div>
             <div className={styles.quickButtons}>
-              {[3, 5, 10, 15].map((minute) => (
+              {[1, 3, 5, 10, 15].map((minute) => (
                 <button
                   key={minute}
                   className={clsx(
@@ -475,7 +557,8 @@ export function HomeApp() {
             <div className={styles.inlineActions}>
               <button
                 className={styles.button}
-                onClick={() => {
+                onClick={async () => {
+                  await ensureAudioReady();
                   setTimerRunning(true);
                   setTimerDone(false);
                 }}

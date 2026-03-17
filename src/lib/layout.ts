@@ -155,7 +155,7 @@ export function generateSeatAssignments(
 export function drawRandomStudents(
   students: StudentRecord[],
   genderFilter: Gender | "all",
-  count: 1 | 2 | 3,
+  count: 1 | 2 | 3 | 4 | 5,
 ) {
   const candidates =
     genderFilter === "all"

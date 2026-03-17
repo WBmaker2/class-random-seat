@@ -2,7 +2,7 @@ export type Language = "ko" | "en";
 export type Gender = "male" | "female";
 export type SeatAssignmentMode = "random" | "mixed_pairs_preferred";
 export type PickerGenderFilter = "all" | Gender;
-export type PickerDrawCount = 1 | 2 | 3;
+export type PickerDrawCount = 1 | 2 | 3 | 4 | 5;
 
 export interface LayoutTemplate {
   rows: number;
