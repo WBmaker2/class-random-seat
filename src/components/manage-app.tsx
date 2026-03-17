@@ -26,7 +26,6 @@ import {
 
 const DEFAULT_CLASS_DRAFT: ClassDraft = {
   name: "",
-  grade: "",
   memo: "",
   layoutTemplate: {
     rows: 4,
@@ -302,7 +301,6 @@ export function ManageApp() {
     setClassDialogMode("edit");
     setClassDraft({
       name: selectedClass.name,
-      grade: selectedClass.grade,
       memo: selectedClass.memo,
       layoutTemplate: selectedClass.layoutTemplate,
     });
@@ -340,7 +338,6 @@ export function ManageApp() {
       const nextClass: ClassroomRecord = {
         id: classId,
         name: classDraft.name.trim(),
-        grade: classDraft.grade.trim(),
         memo: classDraft.memo.trim(),
         layoutTemplate: classDraft.layoutTemplate,
         createdAt: now,
@@ -372,7 +369,6 @@ export function ManageApp() {
             ? {
                 ...item,
                 name: classDraft.name.trim(),
-                grade: classDraft.grade.trim(),
                 memo: classDraft.memo.trim(),
                 layoutTemplate: classDraft.layoutTemplate,
                 updatedAt: now,
@@ -647,8 +643,6 @@ export function ManageApp() {
                       <span className={styles.pill}>{getSeatCapacity(classroom.layoutTemplate)}</span>
                     </div>
                     <div className={styles.itemMeta}>
-                      {classroom.grade || t("recentClass")}
-                      <br />
                       {classroom.layoutTemplate.rows} {t("rows")} /{" "}
                       {classroom.layoutTemplate.pairsPerRow} {t("pairsPerRow")}
                     </div>
@@ -889,33 +883,18 @@ export function ManageApp() {
             </div>
 
             <div className={styles.fieldGrid}>
-              <div className={styles.fieldRow}>
-                <div className={styles.field}>
-                  <label className={styles.label} htmlFor="class-name-manage">
-                    {t("className")}
-                  </label>
-                  <input
-                    className={styles.input}
-                    id="class-name-manage"
-                    onChange={(event) =>
-                      setClassDraft((current) => ({ ...current, name: event.target.value }))
-                    }
-                    value={classDraft.name}
-                  />
-                </div>
-                <div className={styles.field}>
-                  <label className={styles.label} htmlFor="class-grade-manage">
-                    {t("classGrade")}
-                  </label>
-                  <input
-                    className={styles.input}
-                    id="class-grade-manage"
-                    onChange={(event) =>
-                      setClassDraft((current) => ({ ...current, grade: event.target.value }))
-                    }
-                    value={classDraft.grade}
-                  />
-                </div>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="class-name-manage">
+                  {t("className")}
+                </label>
+                <input
+                  className={styles.input}
+                  id="class-name-manage"
+                  onChange={(event) =>
+                    setClassDraft((current) => ({ ...current, name: event.target.value }))
+                  }
+                  value={classDraft.name}
+                />
               </div>
 
               <div className={styles.field}>
@@ -936,7 +915,7 @@ export function ManageApp() {
                 <div className={styles.field}>
                   <span className={styles.label}>{t("rows")}</span>
                   <div className={styles.toggleGroup}>
-                    {[3, 4, 5].map((rowCount) => (
+                    {[1, 2, 3, 4, 5].map((rowCount) => (
                       <button
                         key={rowCount}
                         className={clsx(
@@ -956,28 +935,12 @@ export function ManageApp() {
                     ))}
                   </div>
                   <p className={styles.helper}>{t("rowsHelper")}</p>
-                  <input
-                    className={styles.input}
-                    max={8}
-                    min={1}
-                    onChange={(event) =>
-                      setClassDraft((current) => ({
-                        ...current,
-                        layoutTemplate: {
-                          ...current.layoutTemplate,
-                          rows: Math.max(1, Math.min(8, Number(event.target.value) || 1)),
-                        },
-                      }))
-                    }
-                    type="number"
-                    value={classDraft.layoutTemplate.rows}
-                  />
                 </div>
 
                 <div className={styles.field}>
                   <span className={styles.label}>{t("pairsPerRow")}</span>
                   <div className={styles.toggleGroup}>
-                    {[2, 3].map((pairs) => (
+                    {[1, 2, 3].map((pairs) => (
                       <button
                         key={pairs}
                         className={clsx(
@@ -998,22 +961,6 @@ export function ManageApp() {
                     ))}
                   </div>
                   <p className={styles.helper}>{t("pairsHelper")}</p>
-                  <input
-                    className={styles.input}
-                    max={5}
-                    min={1}
-                    onChange={(event) =>
-                      setClassDraft((current) => ({
-                        ...current,
-                        layoutTemplate: {
-                          ...current.layoutTemplate,
-                          pairsPerRow: Math.max(1, Math.min(5, Number(event.target.value) || 1)),
-                        },
-                      }))
-                    }
-                    type="number"
-                    value={classDraft.layoutTemplate.pairsPerRow}
-                  />
                 </div>
               </div>
 

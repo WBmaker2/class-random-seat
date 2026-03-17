@@ -22,7 +22,6 @@ export interface UserProfile {
 export interface ClassroomRecord {
   id: string;
   name: string;
-  grade: string;
   memo: string;
   layoutTemplate: LayoutTemplate;
   lastViewedSeatPlanId?: string;
@@ -63,7 +62,6 @@ export interface SeatPlanRecord {
 
 export interface ClassDraft {
   name: string;
-  grade: string;
   memo: string;
   layoutTemplate: LayoutTemplate;
 }

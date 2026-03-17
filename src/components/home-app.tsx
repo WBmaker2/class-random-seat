@@ -10,6 +10,7 @@ import { useI18n } from "@/lib/i18n";
 import { loadLocalAppData, saveLocalAppData } from "@/lib/local-app-data";
 import { drawRandomStudents, getSeatCapacity } from "@/lib/layout";
 import { Language, LocalAppData, PickerDrawCount, PickerGenderFilter, StudentRecord } from "@/lib/types";
+import { APP_VERSION } from "@/lib/version";
 
 function formatDate(value?: string, language: Language = "ko") {
   if (!value) {
@@ -321,7 +322,10 @@ export function HomeApp() {
         <section className={styles.hero}>
           <div className={styles.heroCopy}>
             <span className={styles.eyebrow}>{t("savedToFirebase")}</span>
-            <h1 className={styles.title}>{t("appTitle")}</h1>
+            <div className={styles.titleRow}>
+              <h1 className={styles.title}>{t("appTitle")}</h1>
+              <span className={styles.versionText}>{APP_VERSION}</span>
+            </div>
             <p className={styles.subtitle}>{t("appSubtitle")}</p>
             <div className={styles.heroMetaRow}>
               <p className={styles.heroCompactNote}>{t("localModeCompact")}</p>
