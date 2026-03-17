@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { User, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
+import {
+  User,
+  getRedirectResult,
+  onAuthStateChanged,
+  signInWithRedirect,
+  signOut,
+} from "firebase/auth";
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import styles from "@/components/dashboard-app.module.css";
@@ -149,11 +155,21 @@ export function ManageApp() {
 
     setAuth(nextAuth);
 
+    void getRedirectResult(nextAuth)
+      .then((result) => {
+        if (result?.user) {
+          setStatusMessage(t("backupConnected"));
+        }
+      })
+      .catch((error) => {
+        setErrorMessage(error instanceof Error ? error.message : "Sign-in failed.");
+      });
+
     return onAuthStateChanged(nextAuth, (user) => {
       setAuthUser(user);
       setAuthLoading(false);
     });
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!localDataReady) {
@@ -199,8 +215,7 @@ export function ManageApp() {
     clearMessages();
 
     try {
-      await signInWithPopup(auth, googleProvider);
-      setStatusMessage(t("backupConnected"));
+      await signInWithRedirect(auth, googleProvider);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Sign-in failed.");
     }
