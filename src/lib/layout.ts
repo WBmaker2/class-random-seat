@@ -72,18 +72,9 @@ function fillRandomly(
   pairPositions: SeatPosition[][],
   students: StudentRecord[],
 ): SeatAssignment[] {
-  const shuffledPairs = shuffleArray(pairPositions);
   const shuffledStudents = shuffleArray(students);
-  const assignments: SeatAssignment[] = [];
-
-  shuffledPairs.forEach((pair, index) => {
-    const twoStudents = shuffledStudents.slice(index * 2, index * 2 + 2);
-    const randomizedSeats = shuffleArray(pair);
-
-    randomizedSeats.forEach((seat, seatIndex) => {
-      assignments.push(toAssignment(seat, twoStudents[seatIndex]));
-    });
-  });
+  const orderedSeats = pairPositions.flat();
+  const assignments = orderedSeats.map((seat, index) => toAssignment(seat, shuffledStudents[index]));
 
   return sortSeats(assignments);
 }
@@ -113,14 +104,12 @@ function fillMixedPairs(
     }
   });
 
-  const shuffledPairs = shuffleArray(pairPositions);
   const assignments: SeatAssignment[] = [];
 
-  shuffledPairs.forEach((pair, index) => {
-    const randomizedSeats = shuffleArray(pair);
+  pairPositions.forEach((pair, index) => {
     const pairStudents = shuffleArray(groupedStudents[index] ?? []);
 
-    randomizedSeats.forEach((seat, seatIndex) => {
+    pair.forEach((seat, seatIndex) => {
       assignments.push(toAssignment(seat, pairStudents[seatIndex]));
     });
   });

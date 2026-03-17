@@ -336,6 +336,33 @@
   text-align: center;
 }
 
+.seatButton {
+  width: 100%;
+  border: 0;
+  cursor: pointer;
+}
+
+.seatSelectable {
+  outline: 2px solid transparent;
+  transition:
+    transform 160ms ease,
+    outline-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.seatSelectable:hover {
+  transform: translateY(-1px);
+  outline-color: rgba(255, 255, 255, 0.44);
+}
+
+.seatSelected {
+  outline-color: rgba(255, 241, 145, 0.96);
+  box-shadow:
+    inset 0 -10px 18px rgba(7, 65, 95, 0.12),
+    0 10px 24px rgba(12, 92, 137, 0.22),
+    0 0 0 4px rgba(255, 241, 145, 0.28);
+}
+
 .seatName {
   font-weight: 700;
 }
@@ -483,6 +510,17 @@
 .footerNote {
   color: var(--ink-soft);
   font-size: 0.9rem;
+}
+
+.selectionStrip {
+  display: grid;
+  gap: 8px;
+}
+
+.selectionChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .dialogBackdrop {

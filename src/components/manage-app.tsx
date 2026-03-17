@@ -86,6 +86,7 @@ export function ManageApp() {
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   const [seatPlanTitle, setSeatPlanTitle] = useState("");
   const [assignmentMode, setAssignmentMode] = useState<SeatAssignmentMode>("random");
+  const [selectedSwapSeatIds, setSelectedSwapSeatIds] = useState<string[]>([]);
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const classes = appData.classes;
@@ -104,6 +105,13 @@ export function ManageApp() {
   const selectedSeatPlan = useMemo(
     () => seatPlans.find((item) => item.id === selectedSeatPlanId) ?? null,
     [seatPlans, selectedSeatPlanId],
+  );
+  const selectedSwapStudents = useMemo(
+    () =>
+      selectedSwapSeatIds
+        .map((seatId) => selectedSeatPlan?.seats.find((seat) => seat.seatId === seatId) ?? null)
+        .filter((seat): seat is NonNullable<typeof seat> => Boolean(seat?.studentId)),
+    [selectedSeatPlan, selectedSwapSeatIds],
   );
   const currentLayout =
     selectedSeatPlan?.layoutTemplate ??
@@ -193,6 +201,14 @@ export function ManageApp() {
       },
     }));
   }, [language, localDataReady]);
+
+  useEffect(() => {
+    if (selectedSeatPlan) {
+      setAssignmentMode(selectedSeatPlan.assignmentMode);
+    }
+
+    setSelectedSwapSeatIds([]);
+  }, [selectedSeatPlanId, selectedSeatPlan]);
 
   const clearMessages = () => {
     setStatusMessage("");
@@ -350,6 +366,60 @@ export function ManageApp() {
     const nextClass = classes.find((item) => item.id === classId);
     const nextSeatPlans = appData.seatPlansByClass[classId] ?? [];
     setSelectedSeatPlanId(nextClass?.lastViewedSeatPlanId ?? nextSeatPlans[0]?.id ?? "");
+    setSelectedSwapSeatIds([]);
+  };
+
+  const handleSelectSeatPlan = (seatPlanId: string) => {
+    if (!selectedClass) {
+      return;
+    }
+
+    setSelectedSeatPlanId(seatPlanId);
+    setSelectedSwapSeatIds([]);
+    updateAppData((current) => ({
+      ...current,
+      classes: current.classes.map((item) =>
+        item.id === selectedClass.id
+          ? {
+              ...item,
+              lastViewedSeatPlanId: seatPlanId,
+              updatedAt: new Date().toISOString(),
+            }
+          : item,
+      ),
+    }));
+  };
+
+  const updateSelectedSeatPlan = (
+    updater: (seatPlan: SeatPlanRecord) => SeatPlanRecord,
+    successMessage: string,
+  ) => {
+    if (!selectedClass || !selectedSeatPlan) {
+      return;
+    }
+
+    const now = new Date().toISOString();
+
+    updateAppData((current) => ({
+      ...current,
+      seatPlansByClass: {
+        ...current.seatPlansByClass,
+        [selectedClass.id]: (current.seatPlansByClass[selectedClass.id] ?? []).map((seatPlan) =>
+          seatPlan.id === selectedSeatPlan.id ? updater({ ...seatPlan, updatedAt: now }) : seatPlan,
+        ),
+      },
+      classes: current.classes.map((item) =>
+        item.id === selectedClass.id
+          ? {
+              ...item,
+              lastViewedSeatPlanId: selectedSeatPlan.id,
+              updatedAt: now,
+            }
+          : item,
+      ),
+    }));
+
+    setStatusMessage(successMessage);
   };
 
   const handleSaveClass = () => {
@@ -549,6 +619,102 @@ export function ManageApp() {
     setSelectedSeatPlanId(seatPlanId);
     setSeatPlanTitle("");
     setStatusMessage(t("saveSuccessful"));
+  };
+
+  const handleRerandomizeSeatPlan = () => {
+    if (!selectedClass || !selectedSeatPlan) {
+      return;
+    }
+
+    clearMessages();
+
+    const layoutTemplate = selectedSeatPlan.layoutTemplate;
+
+    if (students.length > getSeatCapacity(layoutTemplate)) {
+      setErrorMessage(t("seatCapacityError"));
+      return;
+    }
+
+    updateSelectedSeatPlan(
+      (seatPlan) => ({
+        ...seatPlan,
+        assignmentMode,
+        seats: generateSeatAssignments(students, layoutTemplate, assignmentMode),
+      }),
+      t("seatPlanUpdated"),
+    );
+    setSelectedSwapSeatIds([]);
+  };
+
+  const handleToggleSeatSelection = (seatId: string) => {
+    if (!selectedSeatPlan) {
+      return;
+    }
+
+    const targetSeat = selectedSeatPlan.seats.find((seat) => seat.seatId === seatId);
+
+    if (!targetSeat?.studentId) {
+      return;
+    }
+
+    setSelectedSwapSeatIds((current) => {
+      if (current.includes(seatId)) {
+        return current.filter((item) => item !== seatId);
+      }
+
+      if (current.length === 2) {
+        return [seatId];
+      }
+
+      return [...current, seatId];
+    });
+  };
+
+  const handleSwapSelectedSeats = () => {
+    if (!selectedSeatPlan || selectedSwapSeatIds.length !== 2) {
+      setErrorMessage(t("swapSelectionError"));
+      return;
+    }
+
+    clearMessages();
+
+    const [firstSeatId, secondSeatId] = selectedSwapSeatIds;
+    const firstSeat = selectedSeatPlan.seats.find((seat) => seat.seatId === firstSeatId);
+    const secondSeat = selectedSeatPlan.seats.find((seat) => seat.seatId === secondSeatId);
+
+    if (!firstSeat?.studentId || !secondSeat?.studentId) {
+      setErrorMessage(t("swapSelectionError"));
+      return;
+    }
+
+    updateSelectedSeatPlan(
+      (seatPlan) => ({
+        ...seatPlan,
+        seats: seatPlan.seats.map((seat) => {
+          if (seat.seatId === firstSeatId) {
+            return {
+              ...seat,
+              studentId: secondSeat.studentId,
+              studentName: secondSeat.studentName,
+              gender: secondSeat.gender,
+            };
+          }
+
+          if (seat.seatId === secondSeatId) {
+            return {
+              ...seat,
+              studentId: firstSeat.studentId,
+              studentName: firstSeat.studentName,
+              gender: firstSeat.gender,
+            };
+          }
+
+          return seat;
+        }),
+      }),
+      t("swapCompleted"),
+    );
+    setSelectedSwapSeatIds([]);
   };
 
   if (!localDataReady) {
@@ -841,6 +1007,31 @@ export function ManageApp() {
                     <button className={styles.button} disabled={students.length === 0} onClick={handleCreateSeatPlan} type="button">
                       {t("createSeatPlan")}
                     </button>
+                    <button
+                      className={styles.ghostButton}
+                      disabled={!selectedSeatPlan || students.length === 0}
+                      onClick={handleRerandomizeSeatPlan}
+                      type="button"
+                    >
+                      {t("rerandomizeSeatPlan")}
+                    </button>
+                    <button
+                      className={styles.ghostButton}
+                      disabled={selectedSwapSeatIds.length !== 2}
+                      onClick={handleSwapSelectedSeats}
+                      type="button"
+                    >
+                      {t("swapSelectedSeats")}
+                    </button>
+                    {selectedSwapSeatIds.length > 0 ? (
+                      <button
+                        className={styles.ghostButton}
+                        onClick={() => setSelectedSwapSeatIds([])}
+                        type="button"
+                      >
+                        {t("clearSelection")}
+                      </button>
+                    ) : null}
                     <span className={styles.pill}>
                       {t("totalSeats")} {getSeatCapacity(currentLayout)}
                     </span>
@@ -857,7 +1048,7 @@ export function ManageApp() {
                             styles.planItem,
                             selectedSeatPlanId === seatPlan.id && styles.planItemActive,
                           )}
-                          onClick={() => setSelectedSeatPlanId(seatPlan.id)}
+                          onClick={() => handleSelectSeatPlan(seatPlan.id)}
                           type="button"
                         >
                           <div className={styles.itemHead}>
@@ -883,8 +1074,25 @@ export function ManageApp() {
                         <p className={styles.muted}>{t("seatMapLegend")}</p>
                       </div>
                     </div>
+                    {selectedSeatPlan ? (
+                      <div className={styles.selectionStrip}>
+                        <p className={styles.helper}>{t("swapHint")}</p>
+                        {selectedSwapStudents.length > 0 ? (
+                          <div className={styles.selectionChips}>
+                            <span className={styles.pill}>{t("selectedStudents")}</span>
+                            {selectedSwapStudents.map((seat) => (
+                              <span className={styles.pill} key={seat.seatId}>
+                                {seat.studentName}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <SeatGrid
                       emptyLabel={t("emptySeat")}
+                      onSeatClick={selectedSeatPlan ? handleToggleSeatSelection : undefined}
+                      selectedSeatIds={selectedSwapSeatIds}
                       seats={selectedSeatPlan?.seats}
                       layout={currentLayout}
                     />

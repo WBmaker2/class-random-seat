@@ -44,10 +44,14 @@ export function SeatGrid({
   layout,
   seats,
   emptyLabel,
+  onSeatClick,
+  selectedSeatIds,
 }: {
   layout: { rows: number; pairsPerRow: number };
   seats?: SeatPlanRecord["seats"];
   emptyLabel: string;
+  onSeatClick?: (seatId: string) => void;
+  selectedSeatIds?: string[];
 }) {
   const positions = buildSeatPositions(layout);
 
@@ -68,9 +72,17 @@ export function SeatGrid({
                     <div className={styles.pair} key={`${row}-${pair}`}>
                       {pairSeats.map((position) => {
                         const assigned = seats?.find((seat) => seat.seatId === position.seatId);
+                        const isClickable = Boolean(onSeatClick && assigned?.studentId);
+                        const isSelected = selectedSeatIds?.includes(position.seatId) ?? false;
 
-                        return (
-                          <div className={styles.seat} key={position.seatId}>
+                        const seatClassName = clsx(
+                          styles.seat,
+                          isClickable && styles.seatSelectable,
+                          isSelected && styles.seatSelected,
+                        );
+
+                        const content = (
+                          <>
                             <span className={styles.seatName}>
                               {assigned?.studentName ?? emptyLabel}
                             </span>
@@ -82,6 +94,21 @@ export function SeatGrid({
                             >
                               {position.side === "left" ? "L" : "R"}
                             </span>
+                          </>
+                        );
+
+                        return isClickable ? (
+                          <button
+                            className={clsx(seatClassName, styles.seatButton)}
+                            key={position.seatId}
+                            onClick={() => onSeatClick?.(position.seatId)}
+                            type="button"
+                          >
+                            {content}
+                          </button>
+                        ) : (
+                          <div className={seatClassName} key={position.seatId}>
+                            {content}
                           </div>
                         );
                       })}
