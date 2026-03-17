@@ -27,8 +27,13 @@ export function getFirebaseApp() {
     return null;
   }
 
-  if (!appInstance) {
-    appInstance = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+  try {
+    if (!appInstance) {
+      appInstance = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+    }
+  } catch (error) {
+    console.warn("Firebase app initialization failed.", error);
+    return null;
   }
 
   return appInstance;
@@ -41,8 +46,13 @@ export function getFirebaseDb() {
     return null;
   }
 
-  if (!dbInstance) {
-    dbInstance = getFirestore(app);
+  try {
+    if (!dbInstance) {
+      dbInstance = getFirestore(app);
+    }
+  } catch (error) {
+    console.warn("Firebase Firestore initialization failed.", error);
+    return null;
   }
 
   return dbInstance;
@@ -55,7 +65,14 @@ export function getFirebaseAuth() {
     return null;
   }
 
-  const auth = getAuth(app);
+  let auth;
+
+  try {
+    auth = getAuth(app);
+  } catch (error) {
+    console.warn("Firebase Auth initialization failed.", error);
+    return null;
+  }
 
   if (typeof window !== "undefined" && !persistenceInitialized) {
     persistenceInitialized = true;
