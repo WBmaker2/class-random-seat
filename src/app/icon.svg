@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="seatGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#37a8e6" />
+      <stop offset="100%" stop-color="#0a6aa4" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="#eff7ff" />
+  <path
+    d="M11 18a5 5 0 0 1 5-5h12a5 5 0 0 1 4 2l3 4h13a5 5 0 0 1 5 5v18a5 5 0 0 1-5 5H16a5 5 0 0 1-5-5V18Z"
+    fill="url(#seatGradient)"
+  />
+  <rect x="16" y="24" width="12" height="14" rx="3" fill="#cfeeff" />
+  <rect x="36" y="24" width="12" height="14" rx="3" fill="#cfeeff" />
+  <path d="M29 31h6" stroke="#eff7ff" stroke-width="3" stroke-linecap="round" />
+  <path d="M20 45h24" stroke="#0a6aa4" stroke-width="3" stroke-linecap="round" opacity=".4" />
+</svg>

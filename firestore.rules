@@ -1,0 +1,25 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      match /backups/{backupId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      match /classes/{classId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+
+        match /students/{studentId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+
+        match /seatPlans/{seatPlanId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+      }
+    }
+  }
+}

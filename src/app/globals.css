@@ -1,0 +1,49 @@
+:root {
+  --font-body:
+    "Pretendard", "SUIT", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --font-display:
+    "Space Grotesk", "Pretendard", "SUIT", "Noto Sans KR", "Apple SD Gothic Neo",
+    sans-serif;
+  --bg: #f3f8ff;
+  --bg-accent: #d9ebff;
+  --ink: #1e2a3b;
+  --ink-soft: #5c6d82;
+  --card: rgba(255, 255, 255, 0.82);
+  --line: rgba(66, 102, 146, 0.16);
+  --primary: #1281c4;
+  --primary-strong: #0c5f92;
+  --primary-soft: rgba(18, 129, 196, 0.12);
+  --success: #0e9f6e;
+  --danger: #d6455d;
+  --shadow: 0 24px 60px rgba(31, 68, 110, 0.16);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.92), transparent 32%),
+    radial-gradient(circle at top right, rgba(123, 214, 255, 0.3), transparent 24%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg-accent) 100%);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--ink);
+  font-family: var(--font-body), sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+}
