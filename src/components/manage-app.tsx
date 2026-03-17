@@ -65,8 +65,9 @@ function getEmptyAppData(language: Language): LocalAppData {
 export function ManageApp() {
   const { language, setLanguage } = useLanguage();
   const { t } = useI18n();
+  const [auth, setAuth] = useState<ReturnType<typeof getFirebaseAuth> | null>(null);
   const [authUser, setAuthUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState(hasFirebaseConfig);
+  const [authLoading, setAuthLoading] = useState(true);
   const [didLoadLocalData, setDidLoadLocalData] = useState(false);
   const [localDataReady, setLocalDataReady] = useState(false);
   const [appData, setAppData] = useState<LocalAppData>(() => getEmptyAppData(language));
@@ -81,8 +82,6 @@ export function ManageApp() {
   const [assignmentMode, setAssignmentMode] = useState<SeatAssignmentMode>("random");
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
-
-  const auth = useMemo(() => getFirebaseAuth(), []);
   const classes = appData.classes;
   const selectedClass = useMemo(
     () => classes.find((item) => item.id === selectedClassId) ?? null,
@@ -137,16 +136,25 @@ export function ManageApp() {
   }, [didLoadLocalData, language, setLanguage]);
 
   useEffect(() => {
-    if (!auth) {
+    if (!hasFirebaseConfig) {
       setAuthLoading(false);
       return undefined;
     }
 
-    return onAuthStateChanged(auth, (user) => {
+    const nextAuth = getFirebaseAuth();
+
+    if (!nextAuth) {
+      setAuthLoading(false);
+      return undefined;
+    }
+
+    setAuth(nextAuth);
+
+    return onAuthStateChanged(nextAuth, (user) => {
       setAuthUser(user);
       setAuthLoading(false);
     });
-  }, [auth]);
+  }, []);
 
   useEffect(() => {
     if (!localDataReady) {
