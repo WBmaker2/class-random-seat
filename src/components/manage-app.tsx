@@ -5,6 +5,7 @@ import {
   User,
   getRedirectResult,
   onAuthStateChanged,
+  signInWithPopup,
   signInWithRedirect,
   signOut,
 } from "firebase/auth";
@@ -215,8 +216,21 @@ export function ManageApp() {
     clearMessages();
 
     try {
-      await signInWithRedirect(auth, googleProvider);
+      await signInWithPopup(auth, googleProvider);
+      setStatusMessage(t("backupConnected"));
     } catch (error) {
+      const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
+
+      if (
+        code === "auth/unauthorized-domain" ||
+        code === "auth/popup-blocked" ||
+        code === "auth/popup-closed-by-user" ||
+        code === "auth/network-request-failed"
+      ) {
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
+
       setErrorMessage(error instanceof Error ? error.message : "Sign-in failed.");
     }
   };
