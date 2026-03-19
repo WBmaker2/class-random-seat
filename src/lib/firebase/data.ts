@@ -22,6 +22,34 @@ import {
   UserProfile,
 } from "@/lib/types";
 
+function sanitizeFirestoreValue(value: unknown): unknown {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => sanitizeFirestoreValue(item))
+      .filter((item) => item !== undefined);
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).flatMap(([key, nestedValue]) => {
+        const sanitizedValue = sanitizeFirestoreValue(nestedValue);
+
+        return sanitizedValue === undefined ? [] : [[key, sanitizedValue]];
+      }),
+    );
+  }
+
+  return value;
+}
+
+function sanitizeFirestoreObject<T extends object>(value: T) {
+  return sanitizeFirestoreValue(value) as T;
+}
+
 function getNow() {
   return new Date().toISOString();
 }
@@ -131,13 +159,13 @@ export async function upsertUserProfile(input: {
 
   await setDoc(
     userDoc(input.uid),
-    {
+    sanitizeFirestoreObject({
       displayName: input.displayName,
       email: input.email,
       language: input.language,
       updatedAt: now,
       createdAt: now,
-    },
+    }),
     { merge: true },
   );
 }
@@ -148,10 +176,10 @@ export async function updateUserSettings(
 ) {
   await setDoc(
     userDoc(uid),
-    {
+    sanitizeFirestoreObject({
       ...patch,
       updatedAt: getNow(),
-    },
+    }),
     { merge: true },
   );
 }
@@ -160,24 +188,27 @@ export async function createClassroom(uid: string, draft: ClassDraft) {
   const now = getNow();
 
   await addDoc(collection(userDoc(uid), "classes"), {
-    ...draft,
+    ...sanitizeFirestoreObject(draft),
     createdAt: now,
     updatedAt: now,
   });
 }
 
 export async function updateClassroom(uid: string, classId: string, draft: ClassDraft) {
-  await updateDoc(classDoc(uid, classId), {
-    ...draft,
-    updatedAt: getNow(),
-  });
+  await updateDoc(
+    classDoc(uid, classId),
+    sanitizeFirestoreObject({
+      ...draft,
+      updatedAt: getNow(),
+    }),
+  );
 }
 
 export async function createStudent(uid: string, classId: string, draft: StudentDraft) {
   const now = getNow();
 
   await addDoc(collection(classDoc(uid, classId), "students"), {
-    ...draft,
+    ...sanitizeFirestoreObject(draft),
     createdAt: now,
     updatedAt: now,
   });
@@ -189,10 +220,13 @@ export async function updateStudent(
   studentId: string,
   draft: StudentDraft,
 ) {
-  await updateDoc(studentDoc(uid, classId, studentId), {
-    ...draft,
-    updatedAt: getNow(),
-  });
+  await updateDoc(
+    studentDoc(uid, classId, studentId),
+    sanitizeFirestoreObject({
+      ...draft,
+      updatedAt: getNow(),
+    }),
+  );
 }
 
 export async function deleteStudent(uid: string, classId: string, studentId: string) {
@@ -206,15 +240,18 @@ export async function createSeatPlan(
 ) {
   const now = getNow();
   const reference = await addDoc(collection(classDoc(uid, classId), "seatPlans"), {
-    ...seatPlan,
+    ...sanitizeFirestoreObject(seatPlan),
     createdAt: now,
     updatedAt: now,
   });
 
-  await updateDoc(classDoc(uid, classId), {
-    lastViewedSeatPlanId: reference.id,
-    updatedAt: now,
-  });
+  await updateDoc(
+    classDoc(uid, classId),
+    sanitizeFirestoreObject({
+      lastViewedSeatPlanId: reference.id,
+      updatedAt: now,
+    }),
+  );
 
   return reference.id;
 }
@@ -224,19 +261,25 @@ export async function setLastViewedSeatPlan(
   classId: string,
   seatPlanId: string,
 ) {
-  await updateDoc(classDoc(uid, classId), {
-    lastViewedSeatPlanId: seatPlanId,
-    updatedAt: getNow(),
-  });
+  await updateDoc(
+    classDoc(uid, classId),
+    sanitizeFirestoreObject({
+      lastViewedSeatPlanId: seatPlanId,
+      updatedAt: getNow(),
+    }),
+  );
 }
 
 export async function uploadCloudBackup(uid: string, appData: LocalAppData) {
   const backupRef = doc(userDoc(uid), "backups", "primary");
 
-  await setDoc(backupRef, {
-    appData,
-    updatedAt: getNow(),
-  });
+  await setDoc(
+    backupRef,
+    sanitizeFirestoreObject({
+      appData,
+      updatedAt: getNow(),
+    }),
+  );
 }
 
 export async function downloadCloudBackup(uid: string) {
