@@ -77,6 +77,9 @@ export function HomeApp() {
   const [pickerRemainingIdsByScope, setPickerRemainingIdsByScope] = useState<
     Record<string, string[]>
   >({});
+  const [pickerCycleCompletedByScope, setPickerCycleCompletedByScope] = useState<
+    Record<string, boolean>
+  >({});
   const [pickerCelebrationOpen, setPickerCelebrationOpen] = useState(false);
   const [pickerAnimationKey, setPickerAnimationKey] = useState(0);
   const [timerMinutes, setTimerMinutes] = useState(5);
@@ -117,6 +120,37 @@ export function HomeApp() {
       pairsPerRow: 3,
     };
   const pickerScopeKey = `${selectedClassId || "none"}:${pickerGender}`;
+  const pickerCandidateMap = useMemo(
+    () => new Map(pickerCandidates.map((student) => [student.id, student])),
+    [pickerCandidates],
+  );
+  const pickerRemainingIds = useMemo(
+    () => (pickerRemainingIdsByScope[pickerScopeKey] ?? []).filter((id) => pickerCandidateMap.has(id)),
+    [pickerCandidateMap, pickerRemainingIdsByScope, pickerScopeKey],
+  );
+  const pickerCycleCompleted =
+    pickerCandidates.length > 0 && (pickerCycleCompletedByScope[pickerScopeKey] ?? false);
+  const pickerDrawnCount =
+    pickerCandidates.length === 0
+      ? 0
+      : pickerCycleCompleted
+        ? pickerCandidates.length
+        : pickerRemainingIds.length > 0
+          ? pickerCandidates.length - pickerRemainingIds.length
+          : 0;
+  const pickerProgressLabel = language === "ko" ? "뽑기 현황" : "Progress";
+  const pickerProgressText =
+    language === "ko"
+      ? `${pickerGender === "all" ? "전체 학생" : "선발 대상"} ${pickerCandidates.length}명 중 현재 ${pickerDrawnCount}명 뽑음`
+      : `${pickerDrawnCount} of ${pickerCandidates.length} ${pickerGender === "all" ? "students" : "eligible students"} drawn`;
+  const pickerCycleCompleteMessage =
+    pickerGender === "all"
+      ? language === "ko"
+        ? "모든 학생이 뽑혔습니다. 지금부터 새로운 학생 랜덤 뽑기를 시작합니다."
+        : "All students have been drawn. A new random picker cycle will start now."
+      : language === "ko"
+        ? "선택한 조건의 학생을 모두 뽑았습니다. 지금부터 새로운 학생 랜덤 뽑기를 시작합니다."
+        : "All matching students have been drawn. A new random picker cycle will start now.";
 
   const ensureAudioReady = async () => {
     if (!audioContextRef.current) {
@@ -298,6 +332,8 @@ export function HomeApp() {
   useEffect(() => {
     setPickerResult([]);
     setPickerCelebrationOpen(false);
+    setStatusMessage("");
+    setErrorMessage("");
   }, [pickerGender, selectedClassId]);
 
   const clearMessages = () => {
@@ -356,14 +392,10 @@ export function HomeApp() {
       return;
     }
 
-    const candidateMap = new Map(pickerCandidates.map((student) => [student.id, student]));
-    const currentRemainingIds = (pickerRemainingIdsByScope[pickerScopeKey] ?? []).filter((id) =>
-      candidateMap.has(id),
-    );
     const activePoolIds =
-      currentRemainingIds.length > 0 ? currentRemainingIds : pickerCandidates.map((student) => student.id);
+      pickerRemainingIds.length > 0 ? pickerRemainingIds : pickerCandidates.map((student) => student.id);
     const activePool = activePoolIds
-      .map((id) => candidateMap.get(id))
+      .map((id) => pickerCandidateMap.get(id))
       .filter((student): student is StudentRecord => Boolean(student));
     const drawCount = Math.min(activePool.length, pickerCount) as PickerDrawCount;
     const drawn = drawRandomStudents(activePool, "all", drawCount);
@@ -381,6 +413,10 @@ export function HomeApp() {
       ...current,
       [pickerScopeKey]: nextRemainingIds,
     }));
+    setPickerCycleCompletedByScope((current) => ({
+      ...current,
+      [pickerScopeKey]: nextRemainingIds.length === 0,
+    }));
     setPickerAnimationKey((current) => current + 1);
     setPickerCelebrationOpen(true);
     await playPickerCelebrationSound();
@@ -394,7 +430,7 @@ export function HomeApp() {
     }, 2200);
 
     if (nextRemainingIds.length === 0) {
-      setStatusMessage(t("pickerCycleComplete"));
+      setStatusMessage(pickerCycleCompleteMessage);
     }
   };
 
@@ -592,6 +628,13 @@ export function HomeApp() {
             >
               {t("drawNow")}
             </button>
+
+            {pickerCandidates.length > 0 ? (
+              <div className={styles.pickerProgressCard}>
+                <span className={styles.pickerProgressLabel}>{pickerProgressLabel}</span>
+                <span className={styles.pickerProgressValue}>{pickerProgressText}</span>
+              </div>
+            ) : null}
 
             {pickerResult.length === 0 ? (
               <div className={styles.emptyState}>{t("noPickerResult")}</div>
