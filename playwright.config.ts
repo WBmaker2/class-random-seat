@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const port = Number(process.env.PORT ?? 3005);
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}`;
+const buildCommand = process.env.PLAYWRIGHT_SKIP_BUILD === "1" ? "" : "npm run build && ";
 
 export default defineConfig({
   testDir: "./tests/smoke",
@@ -16,9 +17,9 @@ export default defineConfig({
     video: "retain-on-failure",
   },
   webServer: {
-    command: `npm run start -- --hostname 127.0.0.1 --port ${port}`,
+    command: `${buildCommand}npm run start -- --hostname 127.0.0.1 --port ${port}`,
     url: baseURL,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     stdout: "pipe",
     stderr: "pipe",
     timeout: 120_000,

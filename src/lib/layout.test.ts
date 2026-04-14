@@ -68,6 +68,40 @@ describe("layout", () => {
     expect(assignments.filter((seat) => seat.studentId === null)).toHaveLength(3);
   });
 
+  it("prefers one male and one female in each pair when balanced students fit the layout", () => {
+    const layout = createLayout({ rows: 1, pairsPerRow: 3 });
+    const students = [
+      createStudent(1, "male"),
+      createStudent(2, "female"),
+      createStudent(3, "male"),
+      createStudent(4, "female"),
+      createStudent(5, "male"),
+      createStudent(6, "female"),
+    ];
+
+    const assignments = generateSeatAssignments(students, layout, "mixed_pairs_preferred");
+    const pairGenders = Array.from(
+      assignments.reduce((pairs, seat) => {
+        const key = `r${seat.row}-p${seat.pair}`;
+        const current = pairs.get(key) ?? [];
+
+        if (seat.gender) {
+          current.push(seat.gender);
+        }
+
+        pairs.set(key, current);
+        return pairs;
+      }, new Map<string, StudentRecord["gender"][]>()),
+    ).map(([, genders]) => genders.toSorted());
+
+    expect(assignments.filter((seat) => seat.studentId !== null)).toHaveLength(students.length);
+    expect(pairGenders).toEqual([
+      ["female", "male"],
+      ["female", "male"],
+      ["female", "male"],
+    ]);
+  });
+
   it("never assigns more students than the layout capacity in mixed-pair mode", () => {
     const layout = createLayout({ rows: 2, pairsPerRow: 3 });
     const students = [
