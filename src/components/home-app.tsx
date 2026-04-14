@@ -54,15 +54,15 @@ export function HomeApp() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const timerCompleteRef = useRef<() => void>(() => undefined);
   const pickerCelebrationTimeoutRef = useRef<number | null>(null);
-  const didApplyInitialSelectionRef = useRef(false);
   const {
     appData,
     setAppData,
     ready: localDataReady,
-    initialSelection,
+    selectedClassId,
+    setSelectedClassId,
+    selectedSeatPlanId,
+    setSelectedSeatPlanId,
   } = usePersistedAppData();
-  const [selectedClassId, setSelectedClassId] = useState("");
-  const [selectedSeatPlanId, setSelectedSeatPlanId] = useState("");
   const [pickerGender, setPickerGender] = useState<PickerGenderFilter>("all");
   const [pickerCount, setPickerCount] = useState<PickerDrawCount>(1);
   const [pickerResult, setPickerResult] = useState<StudentRecord[]>([]);
@@ -238,16 +238,6 @@ export function HomeApp() {
   timerCompleteRef.current = () => {
     void playTimerCompleteSound();
   };
-
-  useEffect(() => {
-    if (!localDataReady || didApplyInitialSelectionRef.current) {
-      return;
-    }
-
-    setSelectedClassId(initialSelection.selectedClassId);
-    setSelectedSeatPlanId(initialSelection.selectedSeatPlanId);
-    didApplyInitialSelectionRef.current = true;
-  }, [initialSelection.selectedClassId, initialSelection.selectedSeatPlanId, localDataReady]);
 
   useEffect(() => {
     if (!timerRunning) {

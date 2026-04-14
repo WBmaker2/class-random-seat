@@ -1,6 +1,6 @@
 "use client";
 
-import { Dispatch, SetStateAction, useEffect, useMemo, useRef, useState } from "react";
+import { Dispatch, SetStateAction, useEffect, useRef, useState } from "react";
 import { useLanguage } from "@/components/providers";
 import { createEmptyAppData, deriveInitialSelection } from "@/lib/app-data";
 import { loadLocalAppData, saveLocalAppData } from "@/lib/local-app-data";
@@ -10,14 +10,26 @@ type UsePersistedAppDataResult = {
   appData: LocalAppData;
   setAppData: Dispatch<SetStateAction<LocalAppData>>;
   ready: boolean;
-  initialSelection: ReturnType<typeof deriveInitialSelection>;
+  selectedClassId: string;
+  setSelectedClassId: Dispatch<SetStateAction<string>>;
+  selectedSeatPlanId: string;
+  setSelectedSeatPlanId: Dispatch<SetStateAction<string>>;
+  applyDerivedSelection: (nextAppData: LocalAppData) => void;
 };
 
 export function usePersistedAppData(): UsePersistedAppDataResult {
   const { language, setLanguage } = useLanguage();
   const [appData, setAppData] = useState<LocalAppData>(() => createEmptyAppData(language));
   const [ready, setReady] = useState(false);
+  const [selectedClassId, setSelectedClassId] = useState("");
+  const [selectedSeatPlanId, setSelectedSeatPlanId] = useState("");
   const pendingHydratedLanguageRef = useRef<Language | null>(null);
+  const applyDerivedSelection = (nextAppData: LocalAppData) => {
+    const selection = deriveInitialSelection(nextAppData);
+
+    setSelectedClassId(selection.selectedClassId);
+    setSelectedSeatPlanId(selection.selectedSeatPlanId);
+  };
 
   useEffect(() => {
     if (ready) {
@@ -27,6 +39,7 @@ export function usePersistedAppData(): UsePersistedAppDataResult {
     const loadedData = loadLocalAppData(language);
     pendingHydratedLanguageRef.current = loadedData.preferences.language;
     setAppData(loadedData);
+    applyDerivedSelection(loadedData);
 
     if (loadedData.preferences.language !== language) {
       setLanguage(loadedData.preferences.language);
@@ -73,12 +86,14 @@ export function usePersistedAppData(): UsePersistedAppDataResult {
     });
   }, [appData.preferences.language, language, ready]);
 
-  const initialSelection = useMemo(() => deriveInitialSelection(appData), [appData]);
-
   return {
     appData,
     setAppData,
     ready,
-    initialSelection,
+    selectedClassId,
+    setSelectedClassId,
+    selectedSeatPlanId,
+    setSelectedSeatPlanId,
+    applyDerivedSelection,
   };
 }

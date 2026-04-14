@@ -9,13 +9,13 @@ import {
   signInWithRedirect,
   signOut,
 } from "firebase/auth";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import styles from "@/components/dashboard-app.module.css";
 import { LanguageSwitch, SeatGrid, StatCard } from "@/components/shared-app-ui";
 import { useLanguage } from "@/components/providers";
 import { usePersistedAppData } from "@/hooks/use-persisted-app-data";
-import { deriveInitialSelection, normalizeAppData } from "@/lib/app-data";
+import { normalizeAppData } from "@/lib/app-data";
 import { downloadCloudBackup, uploadCloudBackup } from "@/lib/firebase/data";
 import { getFirebaseAuth, googleProvider, hasFirebaseConfig } from "@/lib/firebase/client";
 import { useI18n } from "@/lib/i18n";
@@ -61,7 +61,6 @@ function formatDate(value?: string, language: Language = "ko") {
 export function ManageApp() {
   const { language, setLanguage } = useLanguage();
   const { t } = useI18n();
-  const didApplyInitialSelectionRef = useRef(false);
   const [auth, setAuth] = useState<ReturnType<typeof getFirebaseAuth> | null>(null);
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -69,10 +68,12 @@ export function ManageApp() {
     appData,
     setAppData,
     ready: localDataReady,
-    initialSelection,
+    selectedClassId,
+    setSelectedClassId,
+    selectedSeatPlanId,
+    setSelectedSeatPlanId,
+    applyDerivedSelection,
   } = usePersistedAppData();
-  const [selectedClassId, setSelectedClassId] = useState("");
-  const [selectedSeatPlanId, setSelectedSeatPlanId] = useState("");
   const [classDialogOpen, setClassDialogOpen] = useState(false);
   const [classDialogMode, setClassDialogMode] = useState<"create" | "edit">("create");
   const [classDraft, setClassDraft] = useState<ClassDraft>(DEFAULT_CLASS_DRAFT);
@@ -118,16 +119,6 @@ export function ManageApp() {
     }),
     [students],
   );
-
-  useEffect(() => {
-    if (!localDataReady || didApplyInitialSelectionRef.current) {
-      return;
-    }
-
-    setSelectedClassId(initialSelection.selectedClassId);
-    setSelectedSeatPlanId(initialSelection.selectedSeatPlanId);
-    didApplyInitialSelectionRef.current = true;
-  }, [initialSelection.selectedClassId, initialSelection.selectedSeatPlanId, localDataReady]);
 
   useEffect(() => {
     if (!hasFirebaseConfig) {
@@ -276,11 +267,9 @@ export function ManageApp() {
         },
         language,
       );
-      const restoredSelection = deriveInitialSelection(restoredData);
 
       setAppData(restoredData);
-      setSelectedClassId(restoredSelection.selectedClassId);
-      setSelectedSeatPlanId(restoredSelection.selectedSeatPlanId);
+      applyDerivedSelection(restoredData);
 
       if (restoredData.preferences.language !== language) {
         setLanguage(restoredData.preferences.language);
