@@ -64,6 +64,10 @@ function isString(value: unknown): value is string {
   return typeof value === "string";
 }
 
+function isNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
 function getTimestampOrFallback(...candidates: Array<string | undefined>) {
   for (const candidate of candidates) {
     if (candidate && candidate.trim()) {
@@ -120,6 +124,12 @@ export function normalizeCloudBackup(
   raw: unknown,
   fallbackLanguage: Language,
 ): CloudBackupEnvelope | null {
+  if (isRecord(raw) && "schemaVersion" in raw) {
+    if (!isNumber(raw.schemaVersion) || raw.schemaVersion !== CLOUD_BACKUP_SCHEMA_VERSION) {
+      return null;
+    }
+  }
+
   const payload = extractBackupPayload(raw);
 
   if (!payload) {
@@ -133,11 +143,20 @@ export function normalizeCloudBackup(
     isString(rawRecord.updatedAt) ? rawRecord.updatedAt : undefined,
     appData.preferences.lastBackupAt,
   );
+  const normalizedAppData = appData.preferences.lastBackupAt
+    ? appData
+    : {
+        ...appData,
+        preferences: {
+          ...appData.preferences,
+          lastBackupAt: savedAt,
+        },
+      };
 
   return {
     schemaVersion: CLOUD_BACKUP_SCHEMA_VERSION,
     savedAt,
-    appData,
+    appData: normalizedAppData,
   };
 }
 

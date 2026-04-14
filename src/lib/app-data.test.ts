@@ -189,6 +189,7 @@ describe("normalizeCloudBackup", () => {
         },
         preferences: {
           language: "en",
+          lastBackupAt: "2026-01-02T00:00:00.000Z",
           recentClassId: "class-alpha",
         },
       },
@@ -198,7 +199,7 @@ describe("normalizeCloudBackup", () => {
   it("drops stale restore references before the cloud backup is accepted", () => {
     const backup = normalizeCloudBackup(
       {
-        schemaVersion: 99,
+        schemaVersion: CLOUD_BACKUP_SCHEMA_VERSION,
         savedAt: "2026-01-03T00:00:00.000Z",
         appData: {
           version: 1,
@@ -240,10 +241,60 @@ describe("normalizeCloudBackup", () => {
         },
         preferences: {
           language: "ko",
+          lastBackupAt: "2026-01-03T00:00:00.000Z",
           recentClassId: "class-alpha",
         },
       },
     });
+  });
+
+  it("rejects backups with an unsupported explicit schema version", () => {
+    expect(
+      normalizeCloudBackup(
+        {
+          schemaVersion: 999,
+          savedAt: "2026-01-03T00:00:00.000Z",
+          appData: {
+            version: 1,
+            classes: [createClassroom()],
+            studentsByClass: {
+              "class-alpha": [createStudent()],
+            },
+            seatPlansByClass: {
+              "class-alpha": [createSeatPlan()],
+            },
+            preferences: {
+              language: "en",
+            },
+          },
+        },
+        "ko",
+      ),
+    ).toBeNull();
+  });
+
+  it("hydrates lastBackupAt from legacy envelope metadata when preferences are missing it", () => {
+    const backup = normalizeCloudBackup(
+      {
+        savedAt: "2026-01-04T00:00:00.000Z",
+        appData: {
+          version: 1,
+          classes: [createClassroom()],
+          studentsByClass: {
+            "class-alpha": [],
+          },
+          seatPlansByClass: {
+            "class-alpha": [],
+          },
+          preferences: {
+            language: "en",
+          },
+        },
+      },
+      "ko",
+    );
+
+    expect(backup?.appData.preferences.lastBackupAt).toBe("2026-01-04T00:00:00.000Z");
   });
 
   it("generates a non-empty savedAt timestamp for legacy backups without metadata", () => {
