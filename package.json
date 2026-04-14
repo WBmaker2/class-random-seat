@@ -23,6 +23,7 @@
     "eslint": "^9.25.1",
     "eslint-config-next": "^15.3.0",
     "firebase-tools": "^15.10.1",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.4"
   }
 }

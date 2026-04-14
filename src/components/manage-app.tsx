@@ -9,15 +9,17 @@ import {
   signInWithRedirect,
   signOut,
 } from "firebase/auth";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import styles from "@/components/dashboard-app.module.css";
 import { LanguageSwitch, SeatGrid, StatCard } from "@/components/shared-app-ui";
 import { useLanguage } from "@/components/providers";
+import { usePersistedAppData } from "@/hooks/use-persisted-app-data";
+import { deriveInitialSelection, normalizeAppData } from "@/lib/app-data";
 import { downloadCloudBackup, uploadCloudBackup } from "@/lib/firebase/data";
 import { getFirebaseAuth, googleProvider, hasFirebaseConfig } from "@/lib/firebase/client";
 import { useI18n } from "@/lib/i18n";
-import { createLocalId, loadLocalAppData, saveLocalAppData } from "@/lib/local-app-data";
+import { createLocalId } from "@/lib/local-app-data";
 import { generateSeatAssignments, getSeatCapacity } from "@/lib/layout";
 import {
   ClassDraft,
@@ -56,27 +58,19 @@ function formatDate(value?: string, language: Language = "ko") {
   }).format(new Date(value));
 }
 
-function getEmptyAppData(language: Language): LocalAppData {
-  return {
-    version: 1,
-    classes: [],
-    studentsByClass: {},
-    seatPlansByClass: {},
-    preferences: {
-      language,
-    },
-  };
-}
-
 export function ManageApp() {
   const { language, setLanguage } = useLanguage();
   const { t } = useI18n();
+  const didApplyInitialSelectionRef = useRef(false);
   const [auth, setAuth] = useState<ReturnType<typeof getFirebaseAuth> | null>(null);
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [didLoadLocalData, setDidLoadLocalData] = useState(false);
-  const [localDataReady, setLocalDataReady] = useState(false);
-  const [appData, setAppData] = useState<LocalAppData>(() => getEmptyAppData(language));
+  const {
+    appData,
+    setAppData,
+    ready: localDataReady,
+    initialSelection,
+  } = usePersistedAppData();
   const [selectedClassId, setSelectedClassId] = useState("");
   const [selectedSeatPlanId, setSelectedSeatPlanId] = useState("");
   const [classDialogOpen, setClassDialogOpen] = useState(false);
@@ -126,28 +120,14 @@ export function ManageApp() {
   );
 
   useEffect(() => {
-    if (didLoadLocalData) {
+    if (!localDataReady || didApplyInitialSelectionRef.current) {
       return;
     }
 
-    const loadedData = loadLocalAppData(language);
-    const nextClassId = loadedData.preferences.recentClassId ?? loadedData.classes[0]?.id ?? "";
-
-    setAppData(loadedData);
-    setSelectedClassId(nextClassId);
-
-    const nextSeatPlans = nextClassId ? loadedData.seatPlansByClass[nextClassId] ?? [] : [];
-    const nextClass = loadedData.classes.find((item) => item.id === nextClassId);
-
-    setSelectedSeatPlanId(nextClass?.lastViewedSeatPlanId ?? nextSeatPlans[0]?.id ?? "");
-
-    if (loadedData.preferences.language !== language) {
-      setLanguage(loadedData.preferences.language);
-    }
-
-    setDidLoadLocalData(true);
-    setLocalDataReady(true);
-  }, [didLoadLocalData, language, setLanguage]);
+    setSelectedClassId(initialSelection.selectedClassId);
+    setSelectedSeatPlanId(initialSelection.selectedSeatPlanId);
+    didApplyInitialSelectionRef.current = true;
+  }, [initialSelection.selectedClassId, initialSelection.selectedSeatPlanId, localDataReady]);
 
   useEffect(() => {
     if (!hasFirebaseConfig) {
@@ -179,28 +159,6 @@ export function ManageApp() {
       setAuthLoading(false);
     });
   }, [t]);
-
-  useEffect(() => {
-    if (!localDataReady) {
-      return;
-    }
-
-    saveLocalAppData(appData);
-  }, [appData, localDataReady]);
-
-  useEffect(() => {
-    if (!localDataReady) {
-      return;
-    }
-
-    setAppData((current) => ({
-      ...current,
-      preferences: {
-        ...current.preferences,
-        language,
-      },
-    }));
-  }, [language, localDataReady]);
 
   useEffect(() => {
     if (selectedSeatPlan) {
@@ -269,7 +227,7 @@ export function ManageApp() {
 
     try {
       const now = new Date().toISOString();
-      const nextData: LocalAppData = {
+      const nextData = {
         ...appData,
         preferences: {
           ...appData.preferences,
@@ -308,17 +266,21 @@ export function ManageApp() {
         return;
       }
 
-      const restoredData: LocalAppData = {
-        ...backup.appData,
-        preferences: {
-          ...backup.appData.preferences,
-          lastRestoreAt: new Date().toISOString(),
+      const restoredData = normalizeAppData(
+        {
+          ...backup.appData,
+          preferences: {
+            ...backup.appData.preferences,
+            lastRestoreAt: new Date().toISOString(),
+          },
         },
-      };
+        language,
+      );
+      const restoredSelection = deriveInitialSelection(restoredData);
 
       setAppData(restoredData);
-      setSelectedClassId(restoredData.preferences.recentClassId ?? restoredData.classes[0]?.id ?? "");
-      setSelectedSeatPlanId("");
+      setSelectedClassId(restoredSelection.selectedClassId);
+      setSelectedSeatPlanId(restoredSelection.selectedSeatPlanId);
 
       if (restoredData.preferences.language !== language) {
         setLanguage(restoredData.preferences.language);
