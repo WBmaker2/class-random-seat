@@ -85,3 +85,9 @@ export interface LocalAppData {
   seatPlansByClass: Record<string, SeatPlanRecord[]>;
   preferences: AppPreferences;
 }
+
+export interface CloudBackupEnvelope {
+  schemaVersion: number;
+  savedAt: string;
+  appData: LocalAppData;
+}

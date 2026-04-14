@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createEmptyAppData, deriveInitialSelection, normalizeAppData } from "./app-data";
+import { CLOUD_BACKUP_SCHEMA_VERSION, normalizeCloudBackup } from "./firebase/data";
 import { ClassroomRecord, SeatPlanRecord, StudentRecord } from "./types";
 
 function createClassroom(overrides: Partial<ClassroomRecord> = {}): ClassroomRecord {
@@ -154,6 +155,94 @@ describe("normalizeAppData", () => {
     expect(deriveInitialSelection(normalized)).toEqual({
       selectedClassId: "class-alpha",
       selectedSeatPlanId: "seatplan-alpha",
+    });
+  });
+});
+
+describe("normalizeCloudBackup", () => {
+  it("fills missing class maps when a backup payload is partial", () => {
+    const backup = normalizeCloudBackup(
+      {
+        appData: {
+          version: 1,
+          classes: [createClassroom()],
+          preferences: {
+            language: "en",
+          },
+        },
+        updatedAt: "2026-01-02T00:00:00.000Z",
+      },
+      "ko",
+    );
+
+    expect(backup).toEqual({
+      schemaVersion: CLOUD_BACKUP_SCHEMA_VERSION,
+      savedAt: "2026-01-02T00:00:00.000Z",
+      appData: {
+        version: 1,
+        classes: [createClassroom()],
+        studentsByClass: {
+          "class-alpha": [],
+        },
+        seatPlansByClass: {
+          "class-alpha": [],
+        },
+        preferences: {
+          language: "en",
+          recentClassId: "class-alpha",
+        },
+      },
+    });
+  });
+
+  it("drops stale restore references before the cloud backup is accepted", () => {
+    const backup = normalizeCloudBackup(
+      {
+        schemaVersion: 99,
+        savedAt: "2026-01-03T00:00:00.000Z",
+        appData: {
+          version: 1,
+          classes: [
+            createClassroom({
+              id: "class-alpha",
+              lastViewedSeatPlanId: "missing-seatplan",
+            }),
+          ],
+          studentsByClass: {},
+          seatPlansByClass: {
+            "class-alpha": [createSeatPlan({ id: "seatplan-alpha" })],
+          },
+          preferences: {
+            language: "ko",
+            recentClassId: "missing-class",
+          },
+        },
+      },
+      "en",
+    );
+
+    expect(backup).toEqual({
+      schemaVersion: CLOUD_BACKUP_SCHEMA_VERSION,
+      savedAt: "2026-01-03T00:00:00.000Z",
+      appData: {
+        version: 1,
+        classes: [
+          createClassroom({
+            id: "class-alpha",
+            lastViewedSeatPlanId: "seatplan-alpha",
+          }),
+        ],
+        studentsByClass: {
+          "class-alpha": [],
+        },
+        seatPlansByClass: {
+          "class-alpha": [createSeatPlan({ id: "seatplan-alpha" })],
+        },
+        preferences: {
+          language: "ko",
+          recentClassId: "class-alpha",
+        },
+      },
     });
   });
 });

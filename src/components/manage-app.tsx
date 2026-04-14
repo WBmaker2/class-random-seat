@@ -15,7 +15,6 @@ import styles from "@/components/dashboard-app.module.css";
 import { LanguageSwitch, SeatGrid, StatCard } from "@/components/shared-app-ui";
 import { useLanguage } from "@/components/providers";
 import { usePersistedAppData } from "@/hooks/use-persisted-app-data";
-import { normalizeAppData } from "@/lib/app-data";
 import { downloadCloudBackup, uploadCloudBackup } from "@/lib/firebase/data";
 import { getFirebaseAuth, googleProvider, hasFirebaseConfig } from "@/lib/firebase/client";
 import { useI18n } from "@/lib/i18n";
@@ -244,7 +243,7 @@ export function ManageApp() {
     clearMessages();
 
     try {
-      const backup = await downloadCloudBackup(authUser.uid);
+      const backup = await downloadCloudBackup(authUser.uid, language);
 
       if (!backup?.appData) {
         setErrorMessage(t("noCloudBackup"));
@@ -257,16 +256,13 @@ export function ManageApp() {
         return;
       }
 
-      const restoredData = normalizeAppData(
-        {
-          ...backup.appData,
-          preferences: {
-            ...backup.appData.preferences,
-            lastRestoreAt: new Date().toISOString(),
-          },
+      const restoredData = {
+        ...backup.appData,
+        preferences: {
+          ...backup.appData.preferences,
+          lastRestoreAt: new Date().toISOString(),
         },
-        language,
-      );
+      };
 
       setAppData(restoredData);
       applyDerivedSelection(restoredData);
