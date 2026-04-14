@@ -14,6 +14,10 @@ service cloud.firestore {
       return !data.keys().hasAny([key]) || data[key] is string;
     }
 
+    function isOptionalNonEmptyStringField(data, key) {
+      return !data.keys().hasAny([key]) || isNonEmptyString(data[key]);
+    }
+
     function isLanguage(value) {
       return value == "ko" || value == "en";
     }
@@ -39,9 +43,9 @@ service cloud.firestore {
       return value is map
         && value.keys().hasOnly(["language", "recentClassId", "lastBackupAt", "lastRestoreAt"])
         && isLanguage(value.language)
-        && isOptionalStringField(value, "recentClassId")
-        && isOptionalStringField(value, "lastBackupAt")
-        && isOptionalStringField(value, "lastRestoreAt");
+        && isOptionalNonEmptyStringField(value, "recentClassId")
+        && isOptionalNonEmptyStringField(value, "lastBackupAt")
+        && isOptionalNonEmptyStringField(value, "lastRestoreAt");
     }
 
     function isUserProfileDocument(data) {
@@ -57,7 +61,7 @@ service cloud.firestore {
         && isNonEmptyString(data.displayName)
         && isNonEmptyString(data.email)
         && isLanguage(data.language)
-        && isOptionalStringField(data, "recentClassId")
+        && isOptionalNonEmptyStringField(data, "recentClassId")
         && isNonEmptyString(data.createdAt)
         && isNonEmptyString(data.updatedAt);
     }
@@ -75,7 +79,7 @@ service cloud.firestore {
         && isNonEmptyString(data.name)
         && data.memo is string
         && isLayoutTemplate(data.layoutTemplate)
-        && isOptionalStringField(data, "lastViewedSeatPlanId")
+        && isOptionalNonEmptyStringField(data, "lastViewedSeatPlanId")
         && isNonEmptyString(data.createdAt)
         && isNonEmptyString(data.updatedAt);
     }
@@ -114,33 +118,150 @@ service cloud.firestore {
         && isNonEmptyString(data.updatedAt);
     }
 
+    function isBackupSeatAssignment(data) {
+      return data is map
+        && data.keys().hasOnly(["seatId", "row", "pair", "side", "studentId", "studentName", "gender"])
+        && data.keys().hasAll(["seatId", "row", "pair", "side", "studentId", "studentName", "gender"])
+        && isNonEmptyString(data.seatId)
+        && data.row is int
+        && data.row >= 0
+        && data.pair is int
+        && data.pair >= 0
+        && (data.side == "left" || data.side == "right")
+        && (data.studentId == null || isNonEmptyString(data.studentId))
+        && (data.studentName == null || isNonEmptyString(data.studentName))
+        && (data.gender == null || isGender(data.gender));
+    }
+
+    function isBackupSeatList(data) {
+      return data is list
+        && (data.size() == 0 || isBackupSeatAssignment(data[0]))
+        && (data.size() < 2 || isBackupSeatAssignment(data[data.size() - 1]));
+    }
+
+    function isBackupClassroomRecord(data) {
+      return data is map
+        && data.keys().hasOnly([
+          "id",
+          "name",
+          "memo",
+          "layoutTemplate",
+          "lastViewedSeatPlanId",
+          "createdAt",
+          "updatedAt",
+        ])
+        && data.keys().hasAll(["id", "name", "memo", "layoutTemplate", "createdAt", "updatedAt"])
+        && isNonEmptyString(data.id)
+        && isNonEmptyString(data.name)
+        && data.memo is string
+        && isLayoutTemplate(data.layoutTemplate)
+        && isOptionalNonEmptyStringField(data, "lastViewedSeatPlanId")
+        && isNonEmptyString(data.createdAt)
+        && isNonEmptyString(data.updatedAt);
+    }
+
+    function isBackupClassroomList(data) {
+      return data is list
+        && (data.size() == 0 || isBackupClassroomRecord(data[0]))
+        && (data.size() < 2 || isBackupClassroomRecord(data[data.size() - 1]));
+    }
+
+    function isBackupStudentRecord(data) {
+      return data is map
+        && data.keys().hasOnly(["id", "name", "gender", "createdAt", "updatedAt"])
+        && data.keys().hasAll(["id", "name", "gender", "createdAt", "updatedAt"])
+        && isNonEmptyString(data.id)
+        && isNonEmptyString(data.name)
+        && isGender(data.gender)
+        && isNonEmptyString(data.createdAt)
+        && isNonEmptyString(data.updatedAt);
+    }
+
+    function isBackupStudentList(data) {
+      return data is list
+        && (data.size() == 0 || isBackupStudentRecord(data[0]))
+        && (data.size() < 2 || isBackupStudentRecord(data[data.size() - 1]));
+    }
+
+    function isBackupSeatPlanRecord(data) {
+      return data is map
+        && data.keys().hasOnly([
+          "id",
+          "title",
+          "assignmentMode",
+          "layoutTemplate",
+          "seats",
+          "createdAt",
+          "updatedAt",
+        ])
+        && data.keys().hasAll([
+          "id",
+          "title",
+          "assignmentMode",
+          "layoutTemplate",
+          "seats",
+          "createdAt",
+          "updatedAt",
+        ])
+        && isNonEmptyString(data.id)
+        && isNonEmptyString(data.title)
+        && isSeatAssignmentMode(data.assignmentMode)
+        && isLayoutTemplate(data.layoutTemplate)
+        && isBackupSeatList(data.seats)
+        && isNonEmptyString(data.createdAt)
+        && isNonEmptyString(data.updatedAt);
+    }
+
+    function isBackupSeatPlanList(data) {
+      return data is list
+        && (data.size() == 0 || isBackupSeatPlanRecord(data[0]))
+        && (data.size() < 2 || isBackupSeatPlanRecord(data[data.size() - 1]));
+    }
+
+    function hasValidBackupListsForClass(appData, index) {
+      let classroom = appData.classes[index];
+      let classId = classroom.id;
+      return (!appData.studentsByClass.keys().hasAny([classId])
+          || isBackupStudentList(appData.studentsByClass[classId]))
+        && (!appData.seatPlansByClass.keys().hasAny([classId])
+          || isBackupSeatPlanList(appData.seatPlansByClass[classId]));
+    }
+
+    function isBackupAppData(data) {
+      return data is map
+        && data.keys().hasOnly([
+          "version",
+          "classes",
+          "studentsByClass",
+          "seatPlansByClass",
+          "preferences",
+        ])
+        && data.keys().hasAll([
+          "version",
+          "classes",
+          "studentsByClass",
+          "seatPlansByClass",
+          "preferences",
+        ])
+        && data.version is int
+        && data.version == 1
+        && isBackupClassroomList(data.classes)
+        && data.studentsByClass is map
+        && data.seatPlansByClass is map
+        && data.studentsByClass.keys().size() <= data.classes.size()
+        && data.seatPlansByClass.keys().size() <= data.classes.size()
+        && (data.classes.size() == 0 || hasValidBackupListsForClass(data, 0))
+        && (data.classes.size() < 2 || hasValidBackupListsForClass(data, data.classes.size() - 1))
+        && isPreferences(data.preferences);
+    }
+
     function isBackupDocument(data) {
       return data.keys().hasOnly(["schemaVersion", "savedAt", "appData"])
         && data.keys().hasAll(["schemaVersion", "savedAt", "appData"])
         && data.schemaVersion is int
         && data.schemaVersion == 1
         && isNonEmptyString(data.savedAt)
-        && data.appData is map
-        && data.appData.keys().hasOnly([
-          "version",
-          "classes",
-          "studentsByClass",
-          "seatPlansByClass",
-          "preferences",
-        ])
-        && data.appData.keys().hasAll([
-          "version",
-          "classes",
-          "studentsByClass",
-          "seatPlansByClass",
-          "preferences",
-        ])
-        && data.appData.version is int
-        && data.appData.version == 1
-        && data.appData.classes is list
-        && data.appData.studentsByClass is map
-        && data.appData.seatPlansByClass is map
-        && isPreferences(data.appData.preferences);
+        && isBackupAppData(data.appData);
     }
 
     match /users/{userId} {

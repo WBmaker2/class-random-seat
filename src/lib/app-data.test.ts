@@ -245,4 +245,24 @@ describe("normalizeCloudBackup", () => {
       },
     });
   });
+
+  it("generates a non-empty savedAt timestamp for legacy backups without metadata", () => {
+    const backup = normalizeCloudBackup(
+      {
+        version: 1,
+        classes: [],
+        studentsByClass: {},
+        seatPlansByClass: {},
+        preferences: {
+          language: "en",
+        },
+      },
+      "ko",
+    );
+
+    expect(backup).not.toBeNull();
+    expect(backup?.savedAt).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/,
+    );
+  });
 });

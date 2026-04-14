@@ -64,6 +64,16 @@ function isString(value: unknown): value is string {
   return typeof value === "string";
 }
 
+function getTimestampOrFallback(...candidates: Array<string | undefined>) {
+  for (const candidate of candidates) {
+    if (candidate && candidate.trim()) {
+      return candidate;
+    }
+  }
+
+  return getNow();
+}
+
 function getNow() {
   return new Date().toISOString();
 }
@@ -118,11 +128,11 @@ export function normalizeCloudBackup(
 
   const appData = normalizeAppData(payload, fallbackLanguage);
   const rawRecord = isRecord(raw) ? raw : {};
-  const savedAt = isString(rawRecord.savedAt)
-    ? rawRecord.savedAt
-    : isString(rawRecord.updatedAt)
-      ? rawRecord.updatedAt
-      : appData.preferences.lastBackupAt ?? "";
+  const savedAt = getTimestampOrFallback(
+    isString(rawRecord.savedAt) ? rawRecord.savedAt : undefined,
+    isString(rawRecord.updatedAt) ? rawRecord.updatedAt : undefined,
+    appData.preferences.lastBackupAt,
+  );
 
   return {
     schemaVersion: CLOUD_BACKUP_SCHEMA_VERSION,
