@@ -6,10 +6,10 @@ import clsx from "clsx";
 import styles from "@/components/dashboard-app.module.css";
 import { LanguageSwitch, SeatGrid } from "@/components/shared-app-ui";
 import { useLanguage } from "@/components/providers";
+import { usePersistedAppData } from "@/hooks/use-persisted-app-data";
 import { useI18n } from "@/lib/i18n";
-import { loadLocalAppData, saveLocalAppData } from "@/lib/local-app-data";
 import { drawRandomStudents, getSeatCapacity } from "@/lib/layout";
-import { Language, LocalAppData, PickerDrawCount, PickerGenderFilter, StudentRecord } from "@/lib/types";
+import { Language, PickerDrawCount, PickerGenderFilter, StudentRecord } from "@/lib/types";
 import { APP_VERSION } from "@/lib/version";
 
 function formatDate(value?: string, language: Language = "ko") {
@@ -30,18 +30,6 @@ function formatTimer(seconds: number) {
   const remainingSeconds = (seconds % 60).toString().padStart(2, "0");
 
   return `${minutes}:${remainingSeconds}`;
-}
-
-function getEmptyAppData(language: Language): LocalAppData {
-  return {
-    version: 1,
-    classes: [],
-    studentsByClass: {},
-    seatPlansByClass: {},
-    preferences: {
-      language,
-    },
-  };
 }
 
 function getAudioContext() {
@@ -66,11 +54,15 @@ export function HomeApp() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const timerCompleteRef = useRef<() => void>(() => undefined);
   const pickerCelebrationTimeoutRef = useRef<number | null>(null);
-  const [didLoadLocalData, setDidLoadLocalData] = useState(false);
-  const [localDataReady, setLocalDataReady] = useState(false);
-  const [appData, setAppData] = useState<LocalAppData>(() => getEmptyAppData(language));
-  const [selectedClassId, setSelectedClassId] = useState("");
-  const [selectedSeatPlanId, setSelectedSeatPlanId] = useState("");
+  const {
+    appData,
+    setAppData,
+    ready: localDataReady,
+    selectedClassId,
+    setSelectedClassId,
+    selectedSeatPlanId,
+    setSelectedSeatPlanId,
+  } = usePersistedAppData();
   const [pickerGender, setPickerGender] = useState<PickerGenderFilter>("all");
   const [pickerCount, setPickerCount] = useState<PickerDrawCount>(1);
   const [pickerResult, setPickerResult] = useState<StudentRecord[]>([]);
@@ -246,52 +238,6 @@ export function HomeApp() {
   timerCompleteRef.current = () => {
     void playTimerCompleteSound();
   };
-
-  useEffect(() => {
-    if (didLoadLocalData) {
-      return;
-    }
-
-    const loadedData = loadLocalAppData(language);
-    const nextClassId = loadedData.preferences.recentClassId ?? loadedData.classes[0]?.id ?? "";
-
-    setAppData(loadedData);
-    setSelectedClassId(nextClassId);
-
-    const nextSeatPlans = nextClassId ? loadedData.seatPlansByClass[nextClassId] ?? [] : [];
-    const nextClass = loadedData.classes.find((item) => item.id === nextClassId);
-
-    setSelectedSeatPlanId(nextClass?.lastViewedSeatPlanId ?? nextSeatPlans[0]?.id ?? "");
-
-    if (loadedData.preferences.language !== language) {
-      setLanguage(loadedData.preferences.language);
-    }
-
-    setDidLoadLocalData(true);
-    setLocalDataReady(true);
-  }, [didLoadLocalData, language, setLanguage]);
-
-  useEffect(() => {
-    if (!localDataReady) {
-      return;
-    }
-
-    saveLocalAppData(appData);
-  }, [appData, localDataReady]);
-
-  useEffect(() => {
-    if (!localDataReady) {
-      return;
-    }
-
-    setAppData((current) => ({
-      ...current,
-      preferences: {
-        ...current.preferences,
-        language,
-      },
-    }));
-  }, [language, localDataReady]);
 
   useEffect(() => {
     if (!timerRunning) {
@@ -474,12 +420,16 @@ export function HomeApp() {
           </div>
         </section>
 
-        <div className={styles.statusStack}>
+        <div className={styles.statusStack} aria-live="polite" aria-atomic="true">
           {statusMessage ? (
-            <div className={clsx(styles.status, styles.statusSuccess)}>{statusMessage}</div>
+            <div className={clsx(styles.status, styles.statusSuccess)} role="status">
+              {statusMessage}
+            </div>
           ) : null}
           {errorMessage ? (
-            <div className={clsx(styles.status, styles.statusError)}>{errorMessage}</div>
+            <div className={clsx(styles.status, styles.statusError)} role="alert">
+              {errorMessage}
+            </div>
           ) : null}
         </div>
 
@@ -505,6 +455,7 @@ export function HomeApp() {
                         styles.chipButton,
                         selectedClassId === classroom.id && styles.chipButtonActive,
                       )}
+                      aria-pressed={selectedClassId === classroom.id}
                       onClick={() => handleSelectClass(classroom.id)}
                       type="button"
                     >
@@ -531,6 +482,7 @@ export function HomeApp() {
                           styles.tabButton,
                           selectedSeatPlanId === seatPlan.id && styles.tabButtonActive,
                         )}
+                        aria-pressed={selectedSeatPlanId === seatPlan.id}
                         onClick={() => handleSelectSeatPlan(seatPlan.id)}
                         type="button"
                       >
@@ -592,6 +544,7 @@ export function HomeApp() {
                       styles.pickerButton,
                       pickerGender === filter && styles.pickerButtonActive,
                     )}
+                    aria-pressed={pickerGender === filter}
                     onClick={() => setPickerGender(filter)}
                     type="button"
                   >
@@ -611,6 +564,7 @@ export function HomeApp() {
                       styles.pickerButton,
                       pickerCount === count && styles.pickerButtonActive,
                     )}
+                    aria-pressed={pickerCount === count}
                     onClick={() => setPickerCount(count as PickerDrawCount)}
                     type="button"
                   >
@@ -681,6 +635,7 @@ export function HomeApp() {
                     styles.chipButton,
                     timerMinutes === minute && styles.chipButtonActive,
                   )}
+                  aria-pressed={timerMinutes === minute}
                   onClick={() => applyTimerMinutes(minute)}
                   type="button"
                 >

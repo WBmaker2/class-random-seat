@@ -3,7 +3,7 @@
 import clsx from "clsx";
 import styles from "@/components/dashboard-app.module.css";
 import { buildSeatPositions } from "@/lib/layout";
-import { Language, SeatPlanRecord } from "@/lib/types";
+import { Language, SeatAssignment, SeatPlanRecord, SeatPosition } from "@/lib/types";
 
 export function LanguageSwitch({
   language,
@@ -27,6 +27,7 @@ export function LanguageSwitch({
               <button
                 key={value}
                 className={clsx(styles.chipButton, language === value && styles.chipButtonActive)}
+                aria-pressed={language === value}
                 onClick={() => onChange(value)}
                 type="button"
               >
@@ -44,12 +45,19 @@ export function SeatGrid({
   layout,
   seats,
   emptyLabel,
+  getSeatAriaLabel,
   onSeatClick,
   selectedSeatIds,
 }: {
   layout: { rows: number; pairsPerRow: number };
   seats?: SeatPlanRecord["seats"];
   emptyLabel: string;
+  getSeatAriaLabel?: (args: {
+    position: SeatPosition;
+    assigned: SeatAssignment | undefined;
+    isSelected: boolean;
+    emptyLabel: string;
+  }) => string;
   onSeatClick?: (seatId: string) => void;
   selectedSeatIds?: string[];
 }) {
@@ -80,6 +88,16 @@ export function SeatGrid({
                           isClickable && styles.seatSelectable,
                           isSelected && styles.seatSelected,
                         );
+                        const ariaLabel = getSeatAriaLabel
+                          ? getSeatAriaLabel({
+                              position,
+                              assigned,
+                              isSelected,
+                              emptyLabel,
+                            })
+                          : `Row ${position.row}, pair ${position.pair}, ${position.side}, ${
+                              assigned?.studentName ?? emptyLabel
+                            }`;
 
                         const content = (
                           <>
@@ -100,6 +118,8 @@ export function SeatGrid({
                         return isClickable ? (
                           <button
                             className={clsx(seatClassName, styles.seatButton)}
+                            aria-label={ariaLabel}
+                            aria-pressed={isSelected}
                             key={position.seatId}
                             onClick={() => onSeatClick?.(position.seatId)}
                             type="button"

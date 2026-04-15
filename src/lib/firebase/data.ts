@@ -11,8 +11,10 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { getFirebaseDb } from "@/lib/firebase/client";
+import { normalizeAppData } from "@/lib/app-data";
 import {
   ClassDraft,
+  CloudBackupEnvelope,
   ClassroomRecord,
   Language,
   LocalAppData,
@@ -21,6 +23,10 @@ import {
   StudentRecord,
   UserProfile,
 } from "@/lib/types";
+
+export const CLOUD_BACKUP_SCHEMA_VERSION = 1;
+
+type UnknownRecord = Record<string, unknown>;
 
 function sanitizeFirestoreValue(value: unknown): unknown {
   if (value === undefined) {
@@ -50,6 +56,28 @@ function sanitizeFirestoreObject<T extends object>(value: T) {
   return sanitizeFirestoreValue(value) as T;
 }
 
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function isNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function getTimestampOrFallback(...candidates: Array<string | undefined>) {
+  for (const candidate of candidates) {
+    if (candidate && candidate.trim()) {
+      return candidate;
+    }
+  }
+
+  return getNow();
+}
+
 function getNow() {
   return new Date().toISOString();
 }
@@ -74,6 +102,72 @@ function classDoc(uid: string, classId: string) {
 
 function studentDoc(uid: string, classId: string, studentId: string) {
   return doc(classDoc(uid, classId), "students", studentId);
+}
+
+function extractBackupPayload(raw: unknown) {
+  if (!isRecord(raw)) {
+    return null;
+  }
+
+  if (isRecord(raw.appData)) {
+    return raw.appData;
+  }
+
+  if ("version" in raw && "classes" in raw) {
+    return raw;
+  }
+
+  return null;
+}
+
+export function normalizeCloudBackup(
+  raw: unknown,
+  fallbackLanguage: Language,
+): CloudBackupEnvelope | null {
+  if (isRecord(raw) && "schemaVersion" in raw) {
+    if (!isNumber(raw.schemaVersion) || raw.schemaVersion !== CLOUD_BACKUP_SCHEMA_VERSION) {
+      return null;
+    }
+  }
+
+  const payload = extractBackupPayload(raw);
+
+  if (!payload) {
+    return null;
+  }
+
+  const appData = normalizeAppData(payload, fallbackLanguage);
+  const rawRecord = isRecord(raw) ? raw : {};
+  const savedAt = getTimestampOrFallback(
+    isString(rawRecord.savedAt) ? rawRecord.savedAt : undefined,
+    isString(rawRecord.updatedAt) ? rawRecord.updatedAt : undefined,
+    appData.preferences.lastBackupAt,
+  );
+  const normalizedAppData = appData.preferences.lastBackupAt
+    ? appData
+    : {
+        ...appData,
+        preferences: {
+          ...appData.preferences,
+          lastBackupAt: savedAt,
+        },
+      };
+
+  return {
+    schemaVersion: CLOUD_BACKUP_SCHEMA_VERSION,
+    savedAt,
+    appData: normalizedAppData,
+  };
+}
+
+function createCloudBackupEnvelope(appData: LocalAppData): CloudBackupEnvelope {
+  const savedAt = appData.preferences.lastBackupAt ?? getNow();
+
+  return {
+    schemaVersion: CLOUD_BACKUP_SCHEMA_VERSION,
+    savedAt,
+    appData: normalizeAppData(appData, appData.preferences.language),
+  };
 }
 
 export function subscribeUserProfile(
@@ -272,17 +366,12 @@ export async function setLastViewedSeatPlan(
 
 export async function uploadCloudBackup(uid: string, appData: LocalAppData) {
   const backupRef = doc(userDoc(uid), "backups", "primary");
+  const backup = createCloudBackupEnvelope(appData);
 
-  await setDoc(
-    backupRef,
-    sanitizeFirestoreObject({
-      appData,
-      updatedAt: getNow(),
-    }),
-  );
+  await setDoc(backupRef, sanitizeFirestoreObject(backup));
 }
 
-export async function downloadCloudBackup(uid: string) {
+export async function downloadCloudBackup(uid: string, fallbackLanguage: Language) {
   const backupRef = doc(userDoc(uid), "backups", "primary");
   const snapshot = await getDoc(backupRef);
 
@@ -290,7 +379,5 @@ export async function downloadCloudBackup(uid: string) {
     return null;
   }
 
-  const data = snapshot.data() as { appData?: LocalAppData; updatedAt?: string };
-
-  return data;
+  return normalizeCloudBackup(snapshot.data(), fallbackLanguage);
 }

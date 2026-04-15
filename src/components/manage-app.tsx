@@ -9,24 +9,32 @@ import {
   signInWithRedirect,
   signOut,
 } from "firebase/auth";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import styles from "@/components/dashboard-app.module.css";
 import { LanguageSwitch, SeatGrid, StatCard } from "@/components/shared-app-ui";
 import { useLanguage } from "@/components/providers";
+import { usePersistedAppData } from "@/hooks/use-persisted-app-data";
 import { downloadCloudBackup, uploadCloudBackup } from "@/lib/firebase/data";
 import { getFirebaseAuth, googleProvider, hasFirebaseConfig } from "@/lib/firebase/client";
 import { useI18n } from "@/lib/i18n";
-import { createLocalId, loadLocalAppData, saveLocalAppData } from "@/lib/local-app-data";
+import { createLocalId } from "@/lib/local-app-data";
 import { generateSeatAssignments, getSeatCapacity } from "@/lib/layout";
 import {
+  buildRestoredAppData,
+  removeStudentFromClass,
+  resolveDialogFocusTarget,
+} from "@/lib/manage-app-actions";
+import {
   ClassDraft,
+  CloudBackupEnvelope,
   ClassroomRecord,
   Gender,
   Language,
   LocalAppData,
   SeatAssignmentMode,
   SeatPlanRecord,
+  SeatAssignment,
   StudentDraft,
   StudentRecord,
 } from "@/lib/types";
@@ -45,6 +53,72 @@ const DEFAULT_STUDENT_DRAFT: StudentDraft = {
   gender: "male",
 };
 
+type PendingConfirm =
+  | {
+      kind: "restore";
+      backup: CloudBackupEnvelope;
+    }
+  | {
+      kind: "delete";
+      classId: string;
+      className: string;
+      student: StudentRecord;
+    };
+
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function getFocusableElements(container: HTMLElement | null) {
+  if (!container) {
+    return [];
+  }
+
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (element) => !element.hasAttribute("disabled") && element.tabIndex !== -1,
+  );
+}
+
+function trapDialogFocus(event: KeyboardEvent, container: HTMLElement | null) {
+  const focusableElements = getFocusableElements(container);
+
+  if (focusableElements.length === 0) {
+    event.preventDefault();
+    return;
+  }
+
+  const firstElement = focusableElements[0];
+  const lastElement = focusableElements.at(-1) ?? firstElement;
+  const activeElement = document.activeElement;
+
+  if (event.shiftKey && activeElement === firstElement) {
+    event.preventDefault();
+    lastElement.focus();
+  } else if (!event.shiftKey && activeElement === lastElement) {
+    event.preventDefault();
+    firstElement.focus();
+  }
+}
+
+function formatSeatLocation(
+  seat: Pick<SeatAssignment, "row" | "pair" | "side">,
+  language: Language,
+) {
+  const sideLabel =
+    seat.side === "left" ? (language === "ko" ? "왼쪽" : "left") : language === "ko" ? "오른쪽" : "right";
+
+  return language === "ko"
+    ? `${seat.row}행 ${seat.pair}짝 ${sideLabel}`
+    : `Row ${seat.row}, pair ${seat.pair}, ${sideLabel}`;
+}
+
+function formatSeatDescription(
+  seat: Pick<SeatAssignment, "row" | "pair" | "side" | "studentName">,
+  language: Language,
+  emptyLabel: string,
+) {
+  return `${formatSeatLocation(seat, language)}, ${seat.studentName ?? emptyLabel}`;
+}
+
 function formatDate(value?: string, language: Language = "ko") {
   if (!value) {
     return "";
@@ -56,29 +130,22 @@ function formatDate(value?: string, language: Language = "ko") {
   }).format(new Date(value));
 }
 
-function getEmptyAppData(language: Language): LocalAppData {
-  return {
-    version: 1,
-    classes: [],
-    studentsByClass: {},
-    seatPlansByClass: {},
-    preferences: {
-      language,
-    },
-  };
-}
-
 export function ManageApp() {
   const { language, setLanguage } = useLanguage();
   const { t } = useI18n();
   const [auth, setAuth] = useState<ReturnType<typeof getFirebaseAuth> | null>(null);
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [didLoadLocalData, setDidLoadLocalData] = useState(false);
-  const [localDataReady, setLocalDataReady] = useState(false);
-  const [appData, setAppData] = useState<LocalAppData>(() => getEmptyAppData(language));
-  const [selectedClassId, setSelectedClassId] = useState("");
-  const [selectedSeatPlanId, setSelectedSeatPlanId] = useState("");
+  const {
+    appData,
+    setAppData,
+    ready: localDataReady,
+    selectedClassId,
+    setSelectedClassId,
+    selectedSeatPlanId,
+    setSelectedSeatPlanId,
+    applyDerivedSelection,
+  } = usePersistedAppData();
   const [classDialogOpen, setClassDialogOpen] = useState(false);
   const [classDialogMode, setClassDialogMode] = useState<"create" | "edit">("create");
   const [classDraft, setClassDraft] = useState<ClassDraft>(DEFAULT_CLASS_DRAFT);
@@ -87,8 +154,15 @@ export function ManageApp() {
   const [seatPlanTitle, setSeatPlanTitle] = useState("");
   const [assignmentMode, setAssignmentMode] = useState<SeatAssignmentMode>("random");
   const [selectedSwapSeatIds, setSelectedSwapSeatIds] = useState<string[]>([]);
+  const [selectionAnnouncement, setSelectionAnnouncement] = useState("");
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const classDialogRef = useRef<HTMLDivElement | null>(null);
+  const confirmDialogRef = useRef<HTMLDivElement | null>(null);
+  const confirmCancelRef = useRef<HTMLButtonElement | null>(null);
+  const lastDialogTriggerRef = useRef<HTMLElement | null>(null);
+  const studentNameInputRef = useRef<HTMLInputElement | null>(null);
   const classes = appData.classes;
   const selectedClass = useMemo(
     () => classes.find((item) => item.id === selectedClassId) ?? null,
@@ -126,30 +200,6 @@ export function ManageApp() {
   );
 
   useEffect(() => {
-    if (didLoadLocalData) {
-      return;
-    }
-
-    const loadedData = loadLocalAppData(language);
-    const nextClassId = loadedData.preferences.recentClassId ?? loadedData.classes[0]?.id ?? "";
-
-    setAppData(loadedData);
-    setSelectedClassId(nextClassId);
-
-    const nextSeatPlans = nextClassId ? loadedData.seatPlansByClass[nextClassId] ?? [] : [];
-    const nextClass = loadedData.classes.find((item) => item.id === nextClassId);
-
-    setSelectedSeatPlanId(nextClass?.lastViewedSeatPlanId ?? nextSeatPlans[0]?.id ?? "");
-
-    if (loadedData.preferences.language !== language) {
-      setLanguage(loadedData.preferences.language);
-    }
-
-    setDidLoadLocalData(true);
-    setLocalDataReady(true);
-  }, [didLoadLocalData, language, setLanguage]);
-
-  useEffect(() => {
     if (!hasFirebaseConfig) {
       setAuthLoading(false);
       return undefined;
@@ -181,38 +231,98 @@ export function ManageApp() {
   }, [t]);
 
   useEffect(() => {
-    if (!localDataReady) {
-      return;
-    }
-
-    saveLocalAppData(appData);
-  }, [appData, localDataReady]);
-
-  useEffect(() => {
-    if (!localDataReady) {
-      return;
-    }
-
-    setAppData((current) => ({
-      ...current,
-      preferences: {
-        ...current.preferences,
-        language,
-      },
-    }));
-  }, [language, localDataReady]);
-
-  useEffect(() => {
     if (selectedSeatPlan) {
       setAssignmentMode(selectedSeatPlan.assignmentMode);
     }
 
     setSelectedSwapSeatIds([]);
+    setSelectionAnnouncement("");
   }, [selectedSeatPlanId, selectedSeatPlan]);
+
+  useEffect(() => {
+    if (!pendingConfirm) {
+      return undefined;
+    }
+
+    const timeout = window.setTimeout(() => {
+      confirmCancelRef.current?.focus();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [pendingConfirm]);
+
+  useEffect(() => {
+    const activeDialogRef = pendingConfirm ? confirmDialogRef : classDialogOpen ? classDialogRef : null;
+
+    if (!activeDialogRef) {
+      return undefined;
+    }
+
+    const focusTarget = activeDialogRef.current;
+    const focusTimer = window.setTimeout(() => {
+      getFocusableElements(focusTarget)[0]?.focus();
+    }, 0);
+    const queueRestoreFocus = () => {
+      const trigger = lastDialogTriggerRef.current;
+
+      window.setTimeout(() => {
+        trigger?.focus();
+        lastDialogTriggerRef.current = null;
+      }, 0);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+
+        queueRestoreFocus();
+
+        if (pendingConfirm) {
+          setPendingConfirm(null);
+        } else {
+          setClassDialogOpen(false);
+        }
+
+        return;
+      }
+
+      if (event.key === "Tab") {
+        trapDialogFocus(event, activeDialogRef.current);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [classDialogOpen, pendingConfirm]);
 
   const clearMessages = () => {
     setStatusMessage("");
     setErrorMessage("");
+  };
+
+  const rememberDialogTrigger = () => {
+    lastDialogTriggerRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  };
+
+  const restoreDialogTriggerFocus = (fallback?: HTMLElement | null) => {
+    const trigger = lastDialogTriggerRef.current;
+
+    window.setTimeout(() => {
+      resolveDialogFocusTarget(trigger, fallback)?.focus();
+      lastDialogTriggerRef.current = null;
+    }, 0);
+  };
+
+  const closeClassDialog = () => {
+    setClassDialogOpen(false);
+    restoreDialogTriggerFocus();
   };
 
   const updateAppData = (updater: (current: LocalAppData) => LocalAppData) => {
@@ -269,7 +379,7 @@ export function ManageApp() {
 
     try {
       const now = new Date().toISOString();
-      const nextData: LocalAppData = {
+      const nextData = {
         ...appData,
         preferences: {
           ...appData.preferences,
@@ -295,36 +405,15 @@ export function ManageApp() {
     clearMessages();
 
     try {
-      const backup = await downloadCloudBackup(authUser.uid);
+      const backup = await downloadCloudBackup(authUser.uid, language);
 
       if (!backup?.appData) {
         setErrorMessage(t("noCloudBackup"));
         return;
       }
 
-      const approved = window.confirm(t("restoreConfirm"));
-
-      if (!approved) {
-        return;
-      }
-
-      const restoredData: LocalAppData = {
-        ...backup.appData,
-        preferences: {
-          ...backup.appData.preferences,
-          lastRestoreAt: new Date().toISOString(),
-        },
-      };
-
-      setAppData(restoredData);
-      setSelectedClassId(restoredData.preferences.recentClassId ?? restoredData.classes[0]?.id ?? "");
-      setSelectedSeatPlanId("");
-
-      if (restoredData.preferences.language !== language) {
-        setLanguage(restoredData.preferences.language);
-      }
-
-      setStatusMessage(t("restoreSaved"));
+      rememberDialogTrigger();
+      setPendingConfirm({ kind: "restore", backup });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Restore failed.");
     }
@@ -332,6 +421,7 @@ export function ManageApp() {
 
   const openCreateClassDialog = () => {
     clearMessages();
+    rememberDialogTrigger();
     setClassDialogMode("create");
     setClassDraft(DEFAULT_CLASS_DRAFT);
     setClassDialogOpen(true);
@@ -343,6 +433,7 @@ export function ManageApp() {
     }
 
     clearMessages();
+    rememberDialogTrigger();
     setClassDialogMode("edit");
     setClassDraft({
       name: selectedClass.name,
@@ -367,6 +458,7 @@ export function ManageApp() {
     const nextSeatPlans = appData.seatPlansByClass[classId] ?? [];
     setSelectedSeatPlanId(nextClass?.lastViewedSeatPlanId ?? nextSeatPlans[0]?.id ?? "");
     setSelectedSwapSeatIds([]);
+    setSelectionAnnouncement("");
   };
 
   const handleSelectSeatPlan = (seatPlanId: string) => {
@@ -376,6 +468,7 @@ export function ManageApp() {
 
     setSelectedSeatPlanId(seatPlanId);
     setSelectedSwapSeatIds([]);
+    setSelectionAnnouncement("");
     updateAppData((current) => ({
       ...current,
       classes: current.classes.map((item) =>
@@ -477,7 +570,7 @@ export function ManageApp() {
       }));
     }
 
-    setClassDialogOpen(false);
+    closeClassDialog();
     setStatusMessage(t("saveSuccessful"));
   };
 
@@ -548,26 +641,49 @@ export function ManageApp() {
       return;
     }
 
-    const approved = window.confirm(`${student.name} ${t("delete")} ?`);
+    clearMessages();
+    rememberDialogTrigger();
+    setPendingConfirm({
+      kind: "delete",
+      classId: selectedClass.id,
+      className: selectedClass.name,
+      student,
+    });
+  };
 
-    if (!approved) {
+  const closePendingConfirm = (fallback?: HTMLElement | null) => {
+    setPendingConfirm(null);
+    restoreDialogTriggerFocus(fallback);
+  };
+
+  const confirmPendingAction = () => {
+    if (!pendingConfirm) {
       return;
     }
 
-    updateAppData((current) => ({
-      ...current,
-      studentsByClass: {
-        ...current.studentsByClass,
-        [selectedClass.id]: (current.studentsByClass[selectedClass.id] ?? []).filter(
-          (item) => item.id !== student.id,
-        ),
-      },
-    }));
+    if (pendingConfirm.kind === "restore") {
+      const restoredData = buildRestoredAppData(pendingConfirm.backup);
 
-    if (editingStudentId === student.id) {
-      setStudentDraft(DEFAULT_STUDENT_DRAFT);
-      setEditingStudentId(null);
+      setAppData(restoredData);
+      applyDerivedSelection(restoredData);
+
+      if (restoredData.preferences.language !== language) {
+        setLanguage(restoredData.preferences.language);
+      }
+
+      setStatusMessage(t("restoreSaved"));
+    } else {
+      updateAppData((current) =>
+        removeStudentFromClass(current, pendingConfirm.classId, pendingConfirm.student.id),
+      );
+
+      if (editingStudentId === pendingConfirm.student.id) {
+        setStudentDraft(DEFAULT_STUDENT_DRAFT);
+        setEditingStudentId(null);
+      }
     }
+
+    closePendingConfirm(studentNameInputRef.current);
   };
 
   const handleCreateSeatPlan = () => {
@@ -644,6 +760,7 @@ export function ManageApp() {
       t("seatPlanUpdated"),
     );
     setSelectedSwapSeatIds([]);
+    setSelectionAnnouncement("");
   };
 
   const handleToggleSeatSelection = (seatId: string) => {
@@ -651,16 +768,36 @@ export function ManageApp() {
       return;
     }
 
+    const seat = selectedSeatPlan.seats.find((item) => item.seatId === seatId);
+
+    if (!seat) {
+      return;
+    }
+
     setSelectedSwapSeatIds((current) => {
+      const nextSelection = current.includes(seatId)
+        ? current.filter((item) => item !== seatId)
+        : current.length === 2
+          ? [seatId]
+          : [...current, seatId];
+
+      const seatLabel = formatSeatDescription(seat, language, t("emptySeat"));
+
       if (current.includes(seatId)) {
-        return current.filter((item) => item !== seatId);
+        setSelectionAnnouncement(
+          language === "ko"
+            ? `${seatLabel} 선택을 해제했습니다. 현재 ${nextSelection.length}개가 선택되었습니다.`
+            : `Deselected ${seatLabel}. ${nextSelection.length} seats selected.`,
+        );
+      } else {
+        setSelectionAnnouncement(
+          language === "ko"
+            ? `${seatLabel}를 선택했습니다. 현재 ${nextSelection.length}개가 선택되었습니다.`
+            : `Selected ${seatLabel}. ${nextSelection.length} seats selected.`,
+        );
       }
 
-      if (current.length === 2) {
-        return [seatId];
-      }
-
-      return [...current, seatId];
+      return nextSelection;
     });
   };
 
@@ -709,6 +846,9 @@ export function ManageApp() {
       t("swapCompleted"),
     );
     setSelectedSwapSeatIds([]);
+    setSelectionAnnouncement(
+      language === "ko" ? "선택한 두 좌석을 바꿨습니다." : "Swapped the two selected seats.",
+    );
   };
 
   if (!localDataReady) {
@@ -751,12 +891,16 @@ export function ManageApp() {
           </div>
         </section>
 
-        <div className={styles.statusStack}>
+        <div className={styles.statusStack} aria-live="polite" aria-atomic="true">
           {statusMessage ? (
-            <div className={clsx(styles.status, styles.statusSuccess)}>{statusMessage}</div>
+            <div className={clsx(styles.status, styles.statusSuccess)} role="status">
+              {statusMessage}
+            </div>
           ) : null}
           {errorMessage ? (
-            <div className={clsx(styles.status, styles.statusError)}>{errorMessage}</div>
+            <div className={clsx(styles.status, styles.statusError)} role="alert">
+              {errorMessage}
+            </div>
           ) : null}
         </div>
 
@@ -824,6 +968,7 @@ export function ManageApp() {
                       styles.planItem,
                       selectedClassId === classroom.id && styles.planItemActive,
                     )}
+                    aria-pressed={selectedClassId === classroom.id}
                     onClick={() => handleSelectClass(classroom.id)}
                     type="button"
                   >
@@ -859,6 +1004,7 @@ export function ManageApp() {
                       <input
                         className={styles.input}
                         id="student-name-manage"
+                        ref={studentNameInputRef}
                         onChange={(event) =>
                           setStudentDraft((current) => ({ ...current, name: event.target.value }))
                         }
@@ -875,6 +1021,7 @@ export function ManageApp() {
                               styles.chipButton,
                               studentDraft.gender === gender && styles.chipButtonActive,
                             )}
+                            aria-pressed={studentDraft.gender === gender}
                             onClick={() => setStudentDraft((current) => ({ ...current, gender }))}
                             type="button"
                           >
@@ -987,6 +1134,7 @@ export function ManageApp() {
                               styles.tabButton,
                               assignmentMode === mode && styles.tabButtonActive,
                             )}
+                            aria-pressed={assignmentMode === mode}
                             onClick={() => setAssignmentMode(mode)}
                             type="button"
                           >
@@ -1020,7 +1168,12 @@ export function ManageApp() {
                     {selectedSwapSeatIds.length > 0 ? (
                       <button
                         className={styles.ghostButton}
-                        onClick={() => setSelectedSwapSeatIds([])}
+                        onClick={() => {
+                          setSelectedSwapSeatIds([]);
+                          setSelectionAnnouncement(
+                            language === "ko" ? "좌석 선택을 초기화했습니다." : "Cleared seat selection.",
+                          );
+                        }}
                         type="button"
                       >
                         {t("clearSelection")}
@@ -1042,6 +1195,7 @@ export function ManageApp() {
                             styles.planItem,
                             selectedSeatPlanId === seatPlan.id && styles.planItemActive,
                           )}
+                          aria-pressed={selectedSeatPlanId === seatPlan.id}
                           onClick={() => handleSelectSeatPlan(seatPlan.id)}
                           type="button"
                         >
@@ -1071,6 +1225,14 @@ export function ManageApp() {
                     {selectedSeatPlan ? (
                       <div className={styles.selectionStrip}>
                         <p className={styles.helper}>{t("swapHint")}</p>
+                        <div
+                          className={styles.srOnly}
+                          aria-live="polite"
+                          aria-atomic="true"
+                          data-testid="seat-selection-announcement"
+                        >
+                          {selectionAnnouncement}
+                        </div>
                         {selectedSwapSeats.length > 0 ? (
                           <div className={styles.selectionChips}>
                             <span className={styles.pill}>{t("selectedStudents")}</span>
@@ -1084,6 +1246,27 @@ export function ManageApp() {
                       </div>
                     ) : null}
                     <SeatGrid
+                      getSeatAriaLabel={({ position, assigned, isSelected, emptyLabel }) =>
+                        [
+                          formatSeatDescription(
+                            {
+                              row: position.row,
+                              pair: position.pair,
+                              side: position.side,
+                              studentName: assigned?.studentName ?? null,
+                            },
+                            language,
+                            emptyLabel,
+                          ),
+                          isSelected
+                            ? language === "ko"
+                              ? "선택됨"
+                              : "Selected"
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(". ")
+                      }
                       emptyLabel={t("emptySeat")}
                       onSeatClick={selectedSeatPlan ? handleToggleSeatSelection : undefined}
                       selectedSeatIds={selectedSwapSeatIds}
@@ -1100,15 +1283,24 @@ export function ManageApp() {
 
       {classDialogOpen ? (
         <div className={styles.dialogBackdrop}>
-          <div className={styles.dialog}>
+          <div
+            className={styles.dialog}
+            aria-describedby="class-dialog-description"
+            aria-labelledby="class-dialog-title"
+            aria-modal="true"
+            ref={classDialogRef}
+            role="dialog"
+          >
             <div className={styles.cardHeader}>
               <div>
-                <h2 className={styles.cardTitle}>
+                <h2 className={styles.cardTitle} id="class-dialog-title">
                   {classDialogMode === "create" ? t("createClass") : t("editClass")}
                 </h2>
-                <p className={styles.muted}>{t("layoutSettings")}</p>
+                <p className={styles.muted} id="class-dialog-description">
+                  {t("layoutSettings")}
+                </p>
               </div>
-              <button className={styles.ghostButton} onClick={() => setClassDialogOpen(false)} type="button">
+              <button className={styles.ghostButton} onClick={closeClassDialog} type="button">
                 {t("cancel")}
               </button>
             </div>
@@ -1153,6 +1345,7 @@ export function ManageApp() {
                           styles.chipButton,
                           classDraft.layoutTemplate.rows === rowCount && styles.chipButtonActive,
                         )}
+                        aria-pressed={classDraft.layoutTemplate.rows === rowCount}
                         onClick={() =>
                           setClassDraft((current) => ({
                             ...current,
@@ -1179,6 +1372,7 @@ export function ManageApp() {
                           classDraft.layoutTemplate.pairsPerRow === pairs &&
                             styles.chipButtonActive,
                         )}
+                        aria-pressed={classDraft.layoutTemplate.pairsPerRow === pairs}
                         onClick={() =>
                           setClassDraft((current) => ({
                             ...current,
@@ -1221,10 +1415,69 @@ export function ManageApp() {
                 <button className={styles.button} onClick={handleSaveClass} type="button">
                   {t("save")}
                 </button>
-                <button className={styles.ghostButton} onClick={() => setClassDialogOpen(false)} type="button">
+                <button className={styles.ghostButton} onClick={closeClassDialog} type="button">
                   {t("cancel")}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingConfirm ? (
+        <div className={styles.dialogBackdrop} onClick={() => closePendingConfirm()}>
+          <div
+            className={styles.dialog}
+            aria-describedby="confirm-dialog-description"
+            aria-labelledby="confirm-dialog-title"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+            ref={confirmDialogRef}
+            role="dialog"
+          >
+            <div className={styles.cardHeader}>
+              <div>
+                <h2 className={styles.cardTitle} id="confirm-dialog-title">
+                  {pendingConfirm.kind === "restore" ? t("restoreFromCloud") : t("delete")}
+                </h2>
+                <p className={styles.muted} id="confirm-dialog-description">
+                  {pendingConfirm.kind === "restore"
+                    ? t("restoreConfirm")
+                    : language === "ko"
+                      ? `${pendingConfirm.className}에서 ${pendingConfirm.student.name} 학생을 삭제할까요?`
+                      : `Delete ${pendingConfirm.student.name} from ${pendingConfirm.className}?`}
+                </p>
+              </div>
+            </div>
+
+            {pendingConfirm.kind === "restore" ? (
+              <div className={styles.fieldGrid}>
+                <div className={styles.pill}>
+                  {t("lastBackupAt")} {formatDate(pendingConfirm.backup.savedAt, language)}
+                </div>
+                <div className={styles.emptyState}>
+                  {pendingConfirm.backup.appData.classes.length} {t("classPanel")} /{" "}
+                  {pendingConfirm.backup.appData.preferences.language === "ko" ? t("korean") : t("english")}
+                </div>
+              </div>
+            ) : (
+              <div className={styles.emptyState}>
+                {pendingConfirm.student.gender === "male" ? t("male") : t("female")}
+              </div>
+            )}
+
+            <div className={styles.inlineActions}>
+              <button
+                className={styles.ghostButton}
+                onClick={() => closePendingConfirm()}
+                ref={confirmCancelRef}
+                type="button"
+              >
+                {t("cancel")}
+              </button>
+              <button className={styles.button} onClick={confirmPendingAction} type="button">
+                {pendingConfirm.kind === "restore" ? t("restoreFromCloud") : t("delete")}
+              </button>
             </div>
           </div>
         </div>

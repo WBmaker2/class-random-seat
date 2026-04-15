@@ -571,6 +571,18 @@
   background: rgba(255, 255, 255, 0.54);
 }
 
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .footerNote {
   color: var(--ink-soft);
   font-size: 0.9rem;
@@ -738,5 +750,69 @@
 
   .gridStats {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .shell {
+    padding: 20px 12px 32px;
+  }
+
+  .hero,
+  .cardInner,
+  .dialog {
+    padding: 18px;
+  }
+
+  .hero {
+    border-radius: 24px;
+  }
+
+  .layoutPreview {
+    padding: 14px;
+  }
+
+  .toggleGroup {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  }
+
+  .chipButton,
+  .tabButton,
+  .pickerButton {
+    width: 100%;
+  }
+
+  .heroActions {
+    width: 100%;
+  }
+
+  .pairTrack {
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    gap: 10px;
+  }
+
+  .layoutRow {
+    gap: 8px;
+  }
+
+  .rowBadge {
+    width: 28px;
+    flex-basis: 28px;
+    font-size: 1.05rem;
+  }
+
+  .seat {
+    min-height: 92px;
+    padding: 12px 10px;
+    gap: 8px;
+  }
+
+  .seatName {
+    font-size: clamp(1.55rem, 7vw, 2.15rem);
+  }
+
+  .seatMeta {
+    font-size: 0.92rem;
   }
 }

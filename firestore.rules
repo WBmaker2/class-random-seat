@@ -2,22 +2,294 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
 
-      match /backups/{backupId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+    function isNonEmptyString(value) {
+      return value is string && value.size() > 0;
+    }
+
+    function isOptionalStringField(data, key) {
+      return !data.keys().hasAny([key]) || data[key] is string;
+    }
+
+    function isOptionalNonEmptyStringField(data, key) {
+      return !data.keys().hasAny([key]) || isNonEmptyString(data[key]);
+    }
+
+    function isLanguage(value) {
+      return value == "ko" || value == "en";
+    }
+
+    function isGender(value) {
+      return value == "male" || value == "female";
+    }
+
+    function isSeatAssignmentMode(value) {
+      return value == "random" || value == "mixed_pairs_preferred";
+    }
+
+    function isLayoutTemplate(value) {
+      return value is map
+        && value.keys().hasOnly(["rows", "pairsPerRow"])
+        && value.rows is int
+        && value.rows > 0
+        && value.pairsPerRow is int
+        && value.pairsPerRow > 0;
+    }
+
+    function isPreferences(value) {
+      return value is map
+        && value.keys().hasOnly(["language", "recentClassId", "lastBackupAt", "lastRestoreAt"])
+        && isLanguage(value.language)
+        && isOptionalNonEmptyStringField(value, "recentClassId")
+        && isOptionalNonEmptyStringField(value, "lastBackupAt")
+        && isOptionalNonEmptyStringField(value, "lastRestoreAt");
+    }
+
+    function isUserProfileDocument(data) {
+      return data.keys().hasOnly([
+          "displayName",
+          "email",
+          "language",
+          "recentClassId",
+          "createdAt",
+          "updatedAt",
+        ])
+        && data.keys().hasAll(["displayName", "email", "language", "createdAt", "updatedAt"])
+        && isNonEmptyString(data.displayName)
+        && isNonEmptyString(data.email)
+        && isLanguage(data.language)
+        && isOptionalNonEmptyStringField(data, "recentClassId")
+        && isNonEmptyString(data.createdAt)
+        && isNonEmptyString(data.updatedAt);
+    }
+
+    function isClassroomDocument(data) {
+      return data.keys().hasOnly([
+          "name",
+          "memo",
+          "layoutTemplate",
+          "lastViewedSeatPlanId",
+          "createdAt",
+          "updatedAt",
+        ])
+        && data.keys().hasAll(["name", "memo", "layoutTemplate", "createdAt", "updatedAt"])
+        && isNonEmptyString(data.name)
+        && data.memo is string
+        && isLayoutTemplate(data.layoutTemplate)
+        && isOptionalNonEmptyStringField(data, "lastViewedSeatPlanId")
+        && isNonEmptyString(data.createdAt)
+        && isNonEmptyString(data.updatedAt);
+    }
+
+    function isStudentDocument(data) {
+      return data.keys().hasOnly(["name", "gender", "createdAt", "updatedAt"])
+        && data.keys().hasAll(["name", "gender", "createdAt", "updatedAt"])
+        && isNonEmptyString(data.name)
+        && isGender(data.gender)
+        && isNonEmptyString(data.createdAt)
+        && isNonEmptyString(data.updatedAt);
+    }
+
+    function isSeatPlanDocument(data) {
+      return data.keys().hasOnly([
+          "title",
+          "assignmentMode",
+          "layoutTemplate",
+          "seats",
+          "createdAt",
+          "updatedAt",
+        ])
+        && data.keys().hasAll([
+          "title",
+          "assignmentMode",
+          "layoutTemplate",
+          "seats",
+          "createdAt",
+          "updatedAt",
+        ])
+        && isNonEmptyString(data.title)
+        && isSeatAssignmentMode(data.assignmentMode)
+        && isLayoutTemplate(data.layoutTemplate)
+        && data.seats is list
+        && isNonEmptyString(data.createdAt)
+        && isNonEmptyString(data.updatedAt);
+    }
+
+    function isBackupSeatAssignment(data) {
+      return data is map
+        && data.keys().hasOnly(["seatId", "row", "pair", "side", "studentId", "studentName", "gender"])
+        && data.keys().hasAll(["seatId", "row", "pair", "side", "studentId", "studentName", "gender"])
+        && isNonEmptyString(data.seatId)
+        && data.row is int
+        && data.row >= 0
+        && data.pair is int
+        && data.pair >= 0
+        && (data.side == "left" || data.side == "right")
+        && (data.studentId == null || isNonEmptyString(data.studentId))
+        && (data.studentName == null || isNonEmptyString(data.studentName))
+        && (data.gender == null || isGender(data.gender));
+    }
+
+    function isBackupSeatList(data) {
+      return data is list
+        && (data.size() == 0 || isBackupSeatAssignment(data[0]))
+        && (data.size() < 2 || isBackupSeatAssignment(data[data.size() - 1]));
+    }
+
+    function isBackupClassroomRecord(data) {
+      return data is map
+        && data.keys().hasOnly([
+          "id",
+          "name",
+          "memo",
+          "layoutTemplate",
+          "lastViewedSeatPlanId",
+          "createdAt",
+          "updatedAt",
+        ])
+        && data.keys().hasAll(["id", "name", "memo", "layoutTemplate", "createdAt", "updatedAt"])
+        && isNonEmptyString(data.id)
+        && isNonEmptyString(data.name)
+        && data.memo is string
+        && isLayoutTemplate(data.layoutTemplate)
+        && isOptionalNonEmptyStringField(data, "lastViewedSeatPlanId")
+        && isNonEmptyString(data.createdAt)
+        && isNonEmptyString(data.updatedAt);
+    }
+
+    function isBackupClassroomList(data) {
+      return data is list
+        && (data.size() == 0 || isBackupClassroomRecord(data[0]))
+        && (data.size() < 2 || isBackupClassroomRecord(data[data.size() - 1]));
+    }
+
+    function isBackupStudentRecord(data) {
+      return data is map
+        && data.keys().hasOnly(["id", "name", "gender", "createdAt", "updatedAt"])
+        && data.keys().hasAll(["id", "name", "gender", "createdAt", "updatedAt"])
+        && isNonEmptyString(data.id)
+        && isNonEmptyString(data.name)
+        && isGender(data.gender)
+        && isNonEmptyString(data.createdAt)
+        && isNonEmptyString(data.updatedAt);
+    }
+
+    function isBackupStudentList(data) {
+      return data is list
+        && (data.size() == 0 || isBackupStudentRecord(data[0]))
+        && (data.size() < 2 || isBackupStudentRecord(data[data.size() - 1]));
+    }
+
+    function isBackupSeatPlanRecord(data) {
+      return data is map
+        && data.keys().hasOnly([
+          "id",
+          "title",
+          "assignmentMode",
+          "layoutTemplate",
+          "seats",
+          "createdAt",
+          "updatedAt",
+        ])
+        && data.keys().hasAll([
+          "id",
+          "title",
+          "assignmentMode",
+          "layoutTemplate",
+          "seats",
+          "createdAt",
+          "updatedAt",
+        ])
+        && isNonEmptyString(data.id)
+        && isNonEmptyString(data.title)
+        && isSeatAssignmentMode(data.assignmentMode)
+        && isLayoutTemplate(data.layoutTemplate)
+        && isBackupSeatList(data.seats)
+        && isNonEmptyString(data.createdAt)
+        && isNonEmptyString(data.updatedAt);
+    }
+
+    function isBackupSeatPlanList(data) {
+      return data is list
+        && (data.size() == 0 || isBackupSeatPlanRecord(data[0]))
+        && (data.size() < 2 || isBackupSeatPlanRecord(data[data.size() - 1]));
+    }
+
+    function hasValidBackupListsForClass(appData, index) {
+      let classroom = appData.classes[index];
+      let classId = classroom.id;
+      return (!appData.studentsByClass.keys().hasAny([classId])
+          || isBackupStudentList(appData.studentsByClass[classId]))
+        && (!appData.seatPlansByClass.keys().hasAny([classId])
+          || isBackupSeatPlanList(appData.seatPlansByClass[classId]));
+    }
+
+    function isBackupAppData(data) {
+      return data is map
+        && data.keys().hasOnly([
+          "version",
+          "classes",
+          "studentsByClass",
+          "seatPlansByClass",
+          "preferences",
+        ])
+        && data.keys().hasAll([
+          "version",
+          "classes",
+          "studentsByClass",
+          "seatPlansByClass",
+          "preferences",
+        ])
+        && data.version is int
+        && data.version == 1
+        && isBackupClassroomList(data.classes)
+        && data.studentsByClass is map
+        && data.seatPlansByClass is map
+        && data.studentsByClass.keys().size() <= data.classes.size()
+        && data.seatPlansByClass.keys().size() <= data.classes.size()
+        && (data.classes.size() == 0 || hasValidBackupListsForClass(data, 0))
+        && (data.classes.size() < 2 || hasValidBackupListsForClass(data, data.classes.size() - 1))
+        && isPreferences(data.preferences);
+    }
+
+    function isBackupDocument(data) {
+      return data.keys().hasOnly(["schemaVersion", "savedAt", "appData"])
+        && data.keys().hasAll(["schemaVersion", "savedAt", "appData"])
+        && data.schemaVersion is int
+        && data.schemaVersion == 1
+        && isNonEmptyString(data.savedAt)
+        && isBackupAppData(data.appData);
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && isUserProfileDocument(request.resource.data);
+      allow delete: if isOwner(userId);
+
+      match /backups/primary {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isBackupDocument(request.resource.data);
+        allow delete: if isOwner(userId);
       }
 
       match /classes/{classId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isClassroomDocument(request.resource.data);
+        allow delete: if isOwner(userId);
 
         match /students/{studentId} {
-          allow read, write: if request.auth != null && request.auth.uid == userId;
+          allow read: if isOwner(userId);
+          allow create, update: if isOwner(userId) && isStudentDocument(request.resource.data);
+          allow delete: if isOwner(userId);
         }
 
         match /seatPlans/{seatPlanId} {
-          allow read, write: if request.auth != null && request.auth.uid == userId;
+          allow read: if isOwner(userId);
+          allow create, update: if isOwner(userId) && isSeatPlanDocument(request.resource.data);
+          allow delete: if isOwner(userId);
         }
       }
     }
