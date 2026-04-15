@@ -25,12 +25,25 @@ Local-first classroom web app for:
 4. Enable Google sign-in in Firebase Authentication.
 5. Create a Firestore database.
 6. Copy `.env.example` to `.env.local` and fill in your Firebase web app keys.
-7. Apply the Firestore rules in [firestore.rules](/Volumes/DATA/Dev/Codex/class-random-seat/firestore.rules).
+7. Apply the Firestore rules in [firestore.rules](./firestore.rules).
+8. If Playwright browsers are missing the first time you run smoke tests, install them with `npx playwright install`.
 
 ```bash
 npm install
 npm run dev
+npx playwright install
 ```
+
+## Verification
+
+Run these commands from the repository root:
+
+- `npm run lint`
+- `npm run test:unit`
+- `npm run test:smoke`
+- `npm run verify`
+
+`npm run verify` runs lint, unit tests, build, and smoke tests together.
 
 ## Local storage
 

@@ -10,12 +10,11 @@
 
 ## 2. 현재 작업 기준 정보
 
-- 현재 작업 폴더: `/Users/kimhongnyeon/Dev/codex/class-random-seat`
+- 현재 작업 폴더: `/Users/kimhongnyeon/Dev/codex/class-random-seat/.worktrees/project-improvements`
 - Git 원격 저장소: `https://github.com/WBmaker2/class-random-seat.git`
 - 운영 URL: `https://class-random-seat.vercel.app`
-- 최신 확인 커밋: `eb6ba6501b7fe7a7f7d49070616596e359319b7e`
 - 사용자 표시 버전: `v1.0.8`
-- `package.json` 버전: `0.1.0`
+- `package.json` 버전: `1.0.8`
 
 참고: 예전 경로인 `/Volumes/DATA/Dev/Codex/class-random-seat`는 현재 작업 기준이 아닐 수 있으므로, 새 작업은 **반드시 위 `/Users/...` 경로 기준**으로 진행하는 것이 안전합니다.
 
@@ -250,7 +249,10 @@ npm run dev
 
 ```bash
 npm run lint
+npm run test:unit
 npm run build
+npm run test:smoke
+npm run verify
 ```
 
 배포:
@@ -281,7 +283,9 @@ npm run build
 
 ### 버전 올릴 때
 
-- `src/lib/version.ts`
+- `package.json`
+- `package-lock.json`
+- `src/lib/version.ts`는 `package.json`의 `version`을 그대로 표시용으로 읽어 옵니다.
 
 ## 13. 하네스 / 에이전트 관련 메모
 
@@ -299,7 +303,7 @@ npm run build
 - Google 로그인 없이도 핵심 기능이 계속 동작해야 합니다.
 - 자리표는 과거 데이터가 깨지지 않도록 `layout snapshot` 보존이 중요합니다.
 - Firebase write에서는 optional field의 `undefined` 처리에 주의해야 합니다.
-- 사용자에게 보이는 버전은 `src/lib/version.ts` 기준으로 관리합니다.
+- 사용자에게 보이는 버전은 `package.json`의 `version`을 기준으로 관리되며, `src/lib/version.ts`의 `APP_VERSION`은 그 값을 그대로 표시용으로 사용합니다.
 
 ---
 
