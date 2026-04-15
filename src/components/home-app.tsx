@@ -420,12 +420,16 @@ export function HomeApp() {
           </div>
         </section>
 
-        <div className={styles.statusStack}>
+        <div className={styles.statusStack} aria-live="polite" aria-atomic="true">
           {statusMessage ? (
-            <div className={clsx(styles.status, styles.statusSuccess)}>{statusMessage}</div>
+            <div className={clsx(styles.status, styles.statusSuccess)} role="status">
+              {statusMessage}
+            </div>
           ) : null}
           {errorMessage ? (
-            <div className={clsx(styles.status, styles.statusError)}>{errorMessage}</div>
+            <div className={clsx(styles.status, styles.statusError)} role="alert">
+              {errorMessage}
+            </div>
           ) : null}
         </div>
 
@@ -451,6 +455,7 @@ export function HomeApp() {
                         styles.chipButton,
                         selectedClassId === classroom.id && styles.chipButtonActive,
                       )}
+                      aria-pressed={selectedClassId === classroom.id}
                       onClick={() => handleSelectClass(classroom.id)}
                       type="button"
                     >
@@ -477,6 +482,7 @@ export function HomeApp() {
                           styles.tabButton,
                           selectedSeatPlanId === seatPlan.id && styles.tabButtonActive,
                         )}
+                        aria-pressed={selectedSeatPlanId === seatPlan.id}
                         onClick={() => handleSelectSeatPlan(seatPlan.id)}
                         type="button"
                       >
@@ -538,6 +544,7 @@ export function HomeApp() {
                       styles.pickerButton,
                       pickerGender === filter && styles.pickerButtonActive,
                     )}
+                    aria-pressed={pickerGender === filter}
                     onClick={() => setPickerGender(filter)}
                     type="button"
                   >
@@ -557,6 +564,7 @@ export function HomeApp() {
                       styles.pickerButton,
                       pickerCount === count && styles.pickerButtonActive,
                     )}
+                    aria-pressed={pickerCount === count}
                     onClick={() => setPickerCount(count as PickerDrawCount)}
                     type="button"
                   >
@@ -627,6 +635,7 @@ export function HomeApp() {
                     styles.chipButton,
                     timerMinutes === minute && styles.chipButtonActive,
                   )}
+                  aria-pressed={timerMinutes === minute}
                   onClick={() => applyTimerMinutes(minute)}
                   type="button"
                 >
